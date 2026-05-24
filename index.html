@@ -1,0 +1,302 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <title>🫧 마끝마 뽀모</title>
+
+  <!-- ✅ PWA 기본 설정 -->
+  <link rel="manifest" href="./manifest.webmanifest" />
+  <meta name="theme-color" content="#ffd1e8" />
+  <meta name="background-color" content="#fff7fb" />
+  <meta name="mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="default" />
+  <meta name="apple-mobile-web-app-title" content="뽀모" />
+  <link rel="apple-touch-icon" href="./icons/icon-192.png" />
+  <link rel="icon" href="./icons/icon-192.png" />
+
+  <script src="./config.js"></script>
+  <style>
+    :root{
+      --bg:#fff7fb;
+      --card:#ffffff;
+      --line:#f2d7ea;
+      --pink:#ffd1e8;
+      --mint:#c9f3ea;
+      --text:#2b2b2b;
+      --muted:#777;
+      --danger:#8b2451;
+      --shadow:0 14px 42px rgba(78, 35, 65, .12);
+    }
+    *{ box-sizing:border-box; }
+    html, body{ height:100%; }
+    body{
+      margin:0;
+      font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial, "Apple SD Gothic Neo", "Noto Sans KR", sans-serif;
+      background:var(--bg);
+      color:var(--text);
+      overflow:hidden;
+    }
+    .appShell{
+      position:fixed;
+      inset:0;
+      display:grid;
+      grid-template-rows:auto 1fr;
+      background:linear-gradient(180deg,#fff7fb 0%,#fff 100%);
+      padding-top: env(safe-area-inset-top);
+      padding-bottom: env(safe-area-inset-bottom);
+    }
+    .topbar{
+      min-height:54px;
+      display:flex;
+      align-items:center;
+      justify-content:space-between;
+      gap:10px;
+      padding:10px 12px;
+      border-bottom:1px solid var(--line);
+      background:rgba(255,255,255,.88);
+      backdrop-filter: blur(12px);
+      -webkit-backdrop-filter: blur(12px);
+      box-shadow:0 8px 24px rgba(0,0,0,.04);
+      z-index:3;
+    }
+    .brand{
+      min-width:0;
+      display:flex;
+      align-items:center;
+      gap:10px;
+      font-weight:900;
+    }
+    .icon{
+      width:34px;height:34px;
+      display:grid;place-items:center;
+      border-radius:12px;
+      background:var(--pink);
+      flex:0 0 auto;
+    }
+    .brandText{ min-width:0; }
+    .title{
+      line-height:1.1;
+      white-space:nowrap;
+      overflow:hidden;
+      text-overflow:ellipsis;
+    }
+    .sub{
+      margin-top:3px;
+      font-size:12px;
+      color:var(--muted);
+      font-weight:800;
+      white-space:nowrap;
+      overflow:hidden;
+      text-overflow:ellipsis;
+    }
+    .actions{ display:flex; align-items:center; gap:8px; flex:0 0 auto; }
+    button, a.btn{
+      border:1px solid var(--line);
+      background:#fff;
+      color:var(--text);
+      border-radius:999px;
+      padding:8px 10px;
+      font-weight:900;
+      font-size:13px;
+      line-height:1;
+      text-decoration:none;
+      cursor:pointer;
+      white-space:nowrap;
+    }
+    button.primary{ background:var(--pink); border-color:#ffc0df; }
+    button:hover, a.btn:hover{ filter:brightness(.985); }
+    .frameWrap{ position:relative; min-height:0; }
+    #pomoFrame{
+      position:absolute;
+      inset:0;
+      width:100%;
+      height:100%;
+      border:0;
+      background:#fff;
+    }
+    .panel{
+      position:absolute;
+      inset:0;
+      display:grid;
+      place-items:center;
+      padding:18px;
+      background:var(--bg);
+      z-index:2;
+    }
+    .card{
+      width:min(480px,100%);
+      background:var(--card);
+      border:1px solid var(--line);
+      border-radius:22px;
+      padding:18px;
+      box-shadow:var(--shadow);
+      text-align:center;
+    }
+    .card h1{ margin:0 0 8px; font-size:22px; }
+    .card p{ margin:8px 0; line-height:1.55; font-size:14px; font-weight:750; color:#444; }
+    .card code{
+      display:block;
+      margin:12px 0;
+      padding:10px;
+      border-radius:14px;
+      background:#fff7fb;
+      border:1px dashed var(--line);
+      color:var(--danger);
+      word-break:break-all;
+      font-weight:900;
+    }
+    .hidden{ display:none !important; }
+    .loader{
+      width:48px;height:48px;
+      border-radius:50%;
+      border:5px solid #ffe2f1;
+      border-top-color:#ff8fc3;
+      margin:0 auto 12px;
+      animation:spin 1s linear infinite;
+    }
+    @keyframes spin{ to{ transform:rotate(360deg); } }
+    @media (display-mode: standalone){
+      .topbar{ min-height:50px; }
+    }
+    @media (max-width:420px){
+      .title{ font-size:14px; }
+      .sub{ display:none; }
+      button, a.btn{ font-size:12px; padding:8px 9px; }
+      .topbar{ padding:8px 9px; }
+    }
+  </style>
+</head>
+<body>
+  <div class="appShell">
+    <header class="topbar">
+      <div class="brand">
+        <div class="icon">⏰</div>
+        <div class="brandText">
+          <div class="title">🫧 마끝마 뽀모</div>
+          <div class="sub" id="statusText">PWA 껍데기 로딩 중</div>
+        </div>
+      </div>
+      <div class="actions">
+        <button class="primary" id="btnInstall" type="button">📲 설치</button>
+        <button id="btnReload" type="button">↻ 새로고침</button>
+        <a class="btn" id="btnOpen" target="_blank" rel="noopener noreferrer">웹으로 열기</a>
+      </div>
+    </header>
+
+    <main class="frameWrap">
+      <iframe id="pomoFrame" title="마끝마 뽀모 웹앱" allow="fullscreen; clipboard-read; clipboard-write; autoplay"></iframe>
+
+      <section class="panel" id="setupPanel">
+        <div class="card">
+          <h1>🫧 뽀모 PWA 설정 필요</h1>
+          <p><strong>config.js</strong> 파일에서 <strong>POMO_APP_URL</strong>에 Apps Script 웹앱 배포 주소를 넣어주세요.</p>
+          <code>POMO_APP_URL: 'https://script.google.com/macros/s/.../exec'</code>
+          <p>설정 후 GitHub에 다시 올리면 이 화면 대신 뽀모 앱이 바로 열려요.</p>
+        </div>
+      </section>
+
+      <section class="panel" id="loadingPanel">
+        <div class="card">
+          <div class="loader"></div>
+          <h1>뽀모 여는 중...</h1>
+          <p>조금만 기다려주세요. iframe이 차단되면 상단의 <strong>웹으로 열기</strong> 버튼으로 바로 열 수 있어요.</p>
+        </div>
+      </section>
+    </main>
+  </div>
+
+  <script>
+    const config = window.POMO_APP_CONFIG || {};
+    const APP_URL = String(config.POMO_APP_URL || '').trim();
+    const PLACEHOLDER = !APP_URL || APP_URL.includes('여기에_Apps_Script');
+    const frame = document.getElementById('pomoFrame');
+    const setupPanel = document.getElementById('setupPanel');
+    const loadingPanel = document.getElementById('loadingPanel');
+    const statusText = document.getElementById('statusText');
+    const btnOpen = document.getElementById('btnOpen');
+    const btnReload = document.getElementById('btnReload');
+    const btnInstall = document.getElementById('btnInstall');
+
+    let deferredPrompt = null;
+
+    function setStatus(text){ statusText.textContent = text; }
+    function hide(el){ el.classList.add('hidden'); }
+    function show(el){ el.classList.remove('hidden'); }
+
+    if (PLACEHOLDER) {
+      show(setupPanel);
+      hide(loadingPanel);
+      btnOpen.removeAttribute('href');
+      setStatus('config.js 설정 필요');
+    } else {
+      hide(setupPanel);
+      show(loadingPanel);
+      btnOpen.href = APP_URL;
+      frame.src = APP_URL;
+      setStatus('Apps Script 웹앱 연결 중');
+
+      frame.addEventListener('load', () => {
+        hide(loadingPanel);
+        setStatus('연결됨');
+      });
+
+      // iframe이 차단되거나 로그인/권한 화면이 막히는 경우를 대비해 안내 유지
+      setTimeout(() => {
+        if (!loadingPanel.classList.contains('hidden')) {
+          setStatus('연결 지연 — 웹으로 열기 가능');
+        }
+      }, 4500);
+    }
+
+    btnReload.addEventListener('click', () => {
+      if (PLACEHOLDER) location.reload();
+      else {
+        show(loadingPanel);
+        frame.src = APP_URL + (APP_URL.includes('?') ? '&' : '?') + '_ts=' + Date.now();
+      }
+    });
+
+    window.addEventListener('beforeinstallprompt', (event) => {
+      event.preventDefault();
+      deferredPrompt = event;
+      btnInstall.style.display = '';
+      setStatus('설치 가능');
+    });
+
+    btnInstall.addEventListener('click', async () => {
+      if (deferredPrompt) {
+        deferredPrompt.prompt();
+        try { await deferredPrompt.userChoice; } catch(e) {}
+        deferredPrompt = null;
+        return;
+      }
+      alert(
+        '설치 버튼이 바로 뜨지 않으면 브라우저 메뉴에서 설치해 주세요.\n\n' +
+        'PC Chrome/Edge: 주소창 오른쪽 설치 아이콘 또는 ⋮/… 메뉴 → 앱 설치\n' +
+        'iPhone/iPad Safari: 공유 버튼 → 홈 화면에 추가\n' +
+        'Android Chrome: ⋮ 메뉴 → 앱 설치 또는 홈 화면에 추가'
+      );
+    });
+
+    window.addEventListener('appinstalled', () => {
+      setStatus('설치 완료');
+      btnInstall.style.display = 'none';
+    });
+
+    if (window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone) {
+      btnInstall.style.display = 'none';
+      setStatus('앱 모드 실행 중');
+    }
+
+    if ('serviceWorker' in navigator) {
+      window.addEventListener('load', () => {
+        navigator.serviceWorker.register('./service-worker.js').catch((err) => {
+          console.warn('[PWA] service worker registration failed:', err);
+        });
+      });
+    }
+  </script>
+</body>
+</html>
