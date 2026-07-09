@@ -10,7 +10,7 @@
   <link rel="manifest" href="./manifest.webmanifest" />
   <link rel="icon" href="./icons/icon-192.png" />
   <link rel="apple-touch-icon" href="./icons/icon-192.png" />
-  <script src="./config.js?v=20260709-github-standalone-v3"></script>
+  <script src="./config.js?v=20260709-github-standalone-v3-presence-v4"></script>
   <script>
   (function(){
     'use strict';
@@ -1027,6 +1027,12 @@
   // UI / 상태
   let activeCount = 0;
   let activeNames = [];
+
+  // ✅ V4: 접속자 표시 기준 통일
+  // - 화면 상단/목록은 Apps Script 서버 presence(joinOrPing/getActiveUsers)를 우선 사용
+  // - Firebase presence는 서버 응답이 아직 없을 때만 임시 fallback
+  let serverPresenceAt = 0;
+  const SERVER_PRESENCE_FRESH_MS = 45000;
   let hostName = '-';
   let iAmHost = false;
   let isStopped = false;
@@ -1239,6 +1245,49 @@
     $('btnOnline').textContent = `${activeCount}명 접속`;
     applyHostUI(hostName, iAmHost);
     $('btnSound').textContent = soundEnabled ? '🔊 알림' : '🔇 알림';
+  }
+
+  function normalizeActiveNames_(names){
+    if (!Array.isArray(names)) return [];
+    return names.map(n => String(n || '').trim()).filter(Boolean);
+  }
+
+  function hasFreshServerPresence_(){
+    return serverPresenceAt && ((Date.now() - serverPresenceAt) < SERVER_PRESENCE_FRESH_MS);
+  }
+
+  function applyServerPresence_(res){
+    if (!res) return false;
+
+    const nestedPomo = (res && typeof res.pomo === 'object') ? res.pomo : null;
+    const names = normalizeActiveNames_(res.activeNames || (nestedPomo && nestedPomo.activeNames));
+    const rawCount = (res.activeCount ?? res.count ?? res.total ?? res.pomoCount ?? (nestedPomo && (nestedPomo.activeCount ?? nestedPomo.count)));
+    const n = Number(rawCount);
+
+    if (Number.isFinite(n)) {
+      activeCount = Math.max(0, n);
+      activeNames = names;
+      serverPresenceAt = Date.now();
+      return true;
+    }
+
+    if (names.length) {
+      activeCount = names.length;
+      activeNames = names;
+      serverPresenceAt = Date.now();
+      return true;
+    }
+
+    return false;
+  }
+
+  function getActiveUsersServer_(){
+    return new Promise((resolve, reject) => {
+      google.script.run
+        .withSuccessHandler(resolve)
+        .withFailureHandler(reject)
+        .getActiveUsers();
+    });
   }
 
   // =====================
@@ -1748,9 +1797,13 @@ window.guideSave = async function(){
         presenceLiveAt = Date.now();
 
         const r = computePresenceFromConn_(presenceLiveVal);
-        activeCount = r.count;
-        activeNames = r.names;
-        renderTop();
+        // ✅ 서버/API presence가 최신이면 앱 화면도 그 값을 우선 표시한다.
+        // Firebase presence는 첫 응답 전/오류 상황에서만 fallback으로 사용.
+        if (!hasFreshServerPresence_()){
+          activeCount = r.count;
+          activeNames = r.names;
+          renderTop();
+        }
       }, (err)=>{
         console.warn('presence onValue error', err);
       });
@@ -1899,15 +1952,27 @@ window.guideSave = async function(){
     // 실시간 구독이 켜져 있으면(대부분) 즉시 목록이 준비됨
     try{ if (sessionId) await startPresence_(); }catch(e){}
 
-    // 혹시 구독이 아직 안 붙었거나(첫 접속), 규칙/네트워크로 못 읽는 경우만 1회 GET
-    if (!presenceLiveVal){
-      const r = await refreshPresenceList_();
-      activeCount = r.count;
-      activeNames = r.names;
-    }else{
-      const r = computePresenceFromConn_(presenceLiveVal);
-      activeCount = r.count;
-      activeNames = r.names;
+    // ✅ 접속자 목록도 대시보드 API와 같은 Apps Script 서버 presence를 우선 사용
+    //    (GitHub 독립 후 Firebase presence와 서버 presence가 갈라져 숫자가 달라지는 문제 방지)
+    let usedServerPresence = false;
+    try{
+      const server = await getActiveUsersServer_();
+      usedServerPresence = applyServerPresence_(server);
+    }catch(e){
+      usedServerPresence = false;
+    }
+
+    if (!usedServerPresence){
+      // 서버 호출 실패 때만 Firebase presence fallback
+      if (!presenceLiveVal){
+        const r = await refreshPresenceList_();
+        activeCount = r.count;
+        activeNames = r.names;
+      }else{
+        const r = computePresenceFromConn_(presenceLiveVal);
+        activeCount = r.count;
+        activeNames = r.names;
+      }
     }
 
     renderTop();
@@ -2259,6 +2324,7 @@ window.guideSave = async function(){
         // 서버 정보 반영
         hostName = res.hostName || hostName;
         iAmHost = !!res.iAmHost;
+        applyServerPresence_(res);
 
         // 뽀모 상태 반영
         if (res.pom) onPomState({ ok:true, ...res.pom });
@@ -2270,8 +2336,9 @@ window.guideSave = async function(){
           // ✅ 공지 구독(접속 시 자동 팝업)
           initNotice_(sessionId);
       initGuide_(sessionId);
-          // 상단 접속자 숫자는 가끔만 갱신
-          if (!document.hidden && Math.random() < 0.35){
+          // 상단 접속자 숫자는 서버 응답(joinOrPing)을 기준으로 표시.
+          // 서버 presence가 아직 없거나 오래된 경우에만 Firebase fallback을 드물게 사용.
+          if (!hasFreshServerPresence_() && !document.hidden && Math.random() < 0.35){
             const r = await refreshPresenceList_();
             activeCount = r.count;
             activeNames = r.names;
