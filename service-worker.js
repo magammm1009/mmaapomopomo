@@ -1,7 +1,7 @@
 // 마끝마 뽀모 PWA Service Worker
-// v3.0.0 — GitHub 독립 실행형: index/config/sw는 항상 최신, Apps Script API는 절대 캐시하지 않음
+// v3.1.0 — 접속자 표시 기준 통일 패치
 
-const CACHE_NAME = 'pomo-github-standalone-v3-20260709';
+const CACHE_NAME = 'pomo-github-standalone-v3-20260709-presence-v4';
 const STATIC_ASSETS = [
   './offline.html',
   './manifest.webmanifest',
