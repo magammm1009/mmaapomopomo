@@ -1,0 +1,3494 @@
+<!doctype html>
+<!-- POMO GitHub standalone v3 / 2026-07-09 / iframe 제거 + Apps Script RPC 기록 유지 -->
+<html>
+<head>
+  <meta charset="utf-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1"/>
+  <title>🫧 마끝마 뽀모</title>
+
+  <!-- ✅ GitHub 독립 실행형 v3: Apps Script는 화면이 아니라 API로만 사용 -->
+  <link rel="manifest" href="./manifest.webmanifest" />
+  <link rel="icon" href="./icons/icon-192.png" />
+  <link rel="apple-touch-icon" href="./icons/icon-192.png" />
+  <script src="./config.js?v=20260709-github-standalone-v3"></script>
+  <script>
+  (function(){
+    'use strict';
+    const VERSION = 'github-standalone-v3-20260709';
+    const cfg = window.POMO_APP_CONFIG || {};
+    const endpoint = String(cfg.POMO_APP_URL || '').trim();
+    const isMissing = !endpoint || endpoint.includes('여기에_Apps_Script') || endpoint.includes('YOUR_');
+
+    function appendQuery_(base, params){
+      const qs = Object.entries(params)
+        .map(([k,v]) => encodeURIComponent(k) + '=' + encodeURIComponent(String(v)))
+        .join('&');
+      return base + (base.indexOf('?') >= 0 ? '&' : '?') + qs;
+    }
+
+    function stringifyArgs_(args){
+      try { return JSON.stringify(Array.from(args || [])); }
+      catch(e) { return '[]'; }
+    }
+
+    function gasJsonpCall_(fnName, args, timeoutMs){
+      return new Promise((resolve, reject) => {
+        if (isMissing) {
+          reject(new Error('config.js의 POMO_APP_URL에 Apps Script /exec 주소가 필요합니다.'));
+          return;
+        }
+        const fn = String(fnName || '').trim();
+        const cbName = '__pomoRpcCb_' + Date.now() + '_' + Math.random().toString(36).slice(2);
+        let script = null;
+        let timer = null;
+        let done = false;
+
+        function cleanup_(){
+          if (done) return;
+          done = true;
+          try { if (timer) clearTimeout(timer); } catch(e) {}
+          try { if (script && script.parentNode) script.parentNode.removeChild(script); } catch(e) {}
+          try { delete window[cbName]; } catch(e) { window[cbName] = undefined; }
+        }
+
+        window[cbName] = function(payload){
+          cleanup_();
+          if (payload && payload.__apiError) {
+            reject(new Error(payload.message || payload.reason || ('Apps Script API 오류: ' + fn)));
+            return;
+          }
+          resolve(payload);
+        };
+
+        script = document.createElement('script');
+        script.async = true;
+        script.onerror = function(){
+          cleanup_();
+          reject(new Error('Apps Script API를 불러오지 못했습니다: ' + fn));
+        };
+        timer = setTimeout(function(){
+          cleanup_();
+          reject(new Error('Apps Script API 응답 지연: ' + fn));
+        }, Math.max(5000, Number(timeoutMs || 20000)));
+
+        script.src = appendQuery_(endpoint, {
+          api: 'rpc',
+          fn: fn,
+          args: stringifyArgs_(args),
+          callback: cbName,
+          _t: Date.now()
+        });
+        document.head.appendChild(script);
+      });
+    }
+
+    function makeRunner_(successHandler, failureHandler){
+      const base = {
+        withSuccessHandler: function(cb){ return makeRunner_(cb, failureHandler); },
+        withFailureHandler: function(cb){ return makeRunner_(successHandler, cb); },
+        withUserObject: function(){ return this; }
+      };
+      return new Proxy(base, {
+        get: function(target, prop){
+          if (prop in target) return target[prop];
+          if (typeof prop === 'symbol') return target[prop];
+          return function(){
+            const args = arguments;
+            gasJsonpCall_(String(prop), args)
+              .then(function(result){
+                if (typeof successHandler === 'function') successHandler(result);
+              })
+              .catch(function(err){
+                if (typeof failureHandler === 'function') failureHandler(err);
+                else console.warn('[POMO API]', String(prop), err && err.message ? err.message : err);
+              });
+          };
+        }
+      });
+    }
+
+    window.google = window.google || {};
+    window.google.script = window.google.script || {};
+    window.google.script.run = makeRunner_(null, null);
+    window.POMO_GAS_CALL = gasJsonpCall_;
+    window.POMO_GITHUB_STANDALONE_VERSION = VERSION;
+    console.log('[POMO GitHub standalone]', VERSION, endpoint ? 'API 준비' : 'API 주소 없음');
+
+    if ('serviceWorker' in navigator) {
+      window.addEventListener('load', function(){
+        navigator.serviceWorker.register('./service-worker.js', { updateViaCache: 'none' })
+          .then(function(reg){ try { reg.update().catch(function(){}); } catch(e) {} })
+          .catch(function(err){ console.warn('[POMO PWA] service worker registration failed:', err); });
+      });
+    }
+  })();
+  </script>
+
+<!-- ✅ PWA 1단계 패치: 앱처럼 열기/홈 화면 추가용 메타 정보 -->
+<meta name="theme-color" content="#ffd1e8"/>
+<meta name="mobile-web-app-capable" content="yes"/>
+<meta name="apple-mobile-web-app-capable" content="yes"/>
+<meta name="apple-mobile-web-app-title" content="마끝마 뽀모"/>
+<meta name="apple-mobile-web-app-status-bar-style" content="default"/>
+<meta name="msapplication-TileColor" content="#ffd1e8"/>
+<meta name="format-detection" content="telephone=no"/>
+  <style>
+    :root{
+      --bg:#fff7fb;
+      --card:#ffffff;
+      --line:#f2d7ea;
+      --pink:#ffd1e8;
+      --mint:#c9f3ea;
+      --text:#2b2b2b;
+      --muted:#777;
+    }
+    *{ box-sizing:border-box; }
+    body{
+      margin:0;
+      font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial, "Apple SD Gothic Neo", "Noto Sans KR", sans-serif;
+      background: var(--bg);
+      color: var(--text);
+    }
+    .wrap{
+      max-width: 640px;
+      width: 100%;
+      margin: 0 auto;
+      padding: 14px 14px 18px;
+      display:flex;
+      flex-direction:column;
+      gap: 12px;
+    }
+    .topbar{
+      display:flex;
+      align-items:center;
+      justify-content:space-between;
+      gap:10px;
+      padding: 10px 12px;
+      background: var(--card);
+      border: 1px solid var(--line);
+      border-radius: 16px;
+      box-shadow: 0 6px 20px rgba(0,0,0,.05);
+    }
+    .brand{
+      display:flex;
+      align-items:center;
+      gap:10px;
+      font-weight:800;
+    }
+    .icon{
+      width:34px;height:34px;
+      display:grid;place-items:center;
+      border-radius:12px;
+      background: var(--pink);
+    }
+    .metaSmall{
+      font-size:12px;
+      color: var(--muted);
+      margin-top:2px;
+      font-weight:600;
+    }
+    .pill{
+      padding:6px 10px;
+      border-radius:999px;
+      border:1px solid var(--line);
+      background:#fff;
+      font-size:12px;
+      font-weight:700;
+      color:#444;
+      white-space:nowrap;
+    }
+    .topActions{ display:flex; gap:8px; align-items:center; }
+    .btnMini{
+      border:1px solid var(--line);
+      background:#fff;
+      border-radius: 12px;
+      padding:7px 9px;          /* 버튼 길이 줄임 */
+      font-weight:900;
+      font-size:13px;
+      cursor:pointer;
+      min-width: 72px;          /* '알림'/'나가기' 정도 */
+      line-height: 1.1;
+      white-space: nowrap;
+}
+    .card{
+      background: var(--card);
+      border: 1px solid var(--line);
+      border-radius: 18px;
+      box-shadow: 0 10px 28px rgba(0,0,0,.06);
+      padding: 12px;
+    }
+    .timer{
+      padding: 14px 12px 12px;
+      overflow:hidden;
+      font-variant-numeric: tabular-nums;
+    }
+    .time{
+  font-size: 112px;
+  line-height: 1;
+  font-weight: 900;
+  letter-spacing: -1px;
+  /* ✅ 숫자 폭/정렬 고정(움찔 방지) */
+  white-space: nowrap;
+  display: block;
+  width: 5.4ch;
+  margin: 0 auto;
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: "tnum" 1;
+}
+    
+#time{ text-align: center; }
+.phase{
+      width: fit-content;
+      margin: 0 auto 10px;
+      padding: 8px 14px;
+      border-radius: 999px;
+      border: 1px solid var(--line);
+      background: #ffe3f1;
+      color: #7b214e;
+      font-weight: 900;
+      letter-spacing: .2px;
+      box-shadow: 0 8px 18px rgba(255, 60, 150, .08);
+      user-select: none;
+    }
+    .phase[data-mode="rest"]{
+      background: #f1ecff; /* 은은한 보라 */
+      border-color: #e5dcff;
+      color: #4f2c7a;
+      box-shadow: 0 8px 18px rgba(120, 70, 255, .10);
+    }
+    .controls{
+      display:flex;
+      gap:10px;
+      justify-content:center;
+      flex-wrap:wrap;
+    }
+    button{
+      border:0;
+      border-radius: 14px;
+      padding: 10px 12px;       /* 전체 버튼 폭 조금 축소 */
+      font-weight:900;
+      cursor:pointer;
+      min-width: 96px;          /* 기존 112px -> 96px */
+}
+    .btnStart{ background: var(--pink); }
+    .btnReset{ background: var(--mint); }
+    .btnGhost{
+      background:#fff;
+      border:1px solid var(--line);
+      min-width:auto;
+      padding: 10px 12px;
+    }
+    button:disabled{ opacity: .55; cursor:not-allowed; }
+
+    input, textarea{
+      width:100%;
+      border:1px solid var(--line);
+      border-radius: 14px;
+      padding: 10px 12px;
+      font-weight:700;
+      outline:none;
+      background:#fff;
+    }
+    textarea{ height:64px; resize: vertical; font-weight:700; }
+
+    #log{
+      border:1px solid var(--line);
+      border-radius: 16px;
+      padding: 10px;
+      background:#fff;
+      height: 260px;
+      overflow:auto;
+    }
+
+    /* ✅ 위쪽 채팅을 읽는 동안에는 자동으로 최신 메시지로 끌고 내려가지 않음 */
+    .chatLogWrap{
+      position: relative;
+    }
+    .newMessagesBtn{
+      position: absolute;
+      left: 50%;
+      bottom: 12px;
+      transform: translateX(-50%);
+      z-index: 3;
+      min-width: 0 !important;
+      padding: 8px 14px !important;
+      border: 1px solid rgba(0,0,0,.10) !important;
+      border-radius: 999px !important;
+      background: #fff !important;
+      color: #5a2b44;
+      box-shadow: 0 8px 18px rgba(0,0,0,.13);
+      font-size: 12px;
+      font-weight: 900;
+      white-space: nowrap;
+    }
+    .newMessagesBtn:hover{ filter: brightness(.98); }
+    .newMessagesBtn:active{ transform: translateX(-50%) translateY(1px); }
+    .newMessagesBtn.isHidden{ display: none !important; }
+    .row{ display:flex; flex-direction:column; gap:6px; margin-bottom:10px; }
+    .metaLine{ font-size:12px; color: var(--muted); font-weight:800; }
+    .bubble{
+      display:inline-block;
+      max-width: 100%;
+      padding: 10px 12px;
+      border-radius: 16px;
+      border:1px solid var(--line);
+      white-space: pre-wrap;
+      word-break: break-word;
+      overflow-wrap: anywhere;
+      line-height:1.35;
+      font-weight:750;
+    }
+    /* ✅ 말풍선: 심플 그라데이션 + 입체감 제거 */
+    .bubble{ box-shadow:none !important; } 
+    .mine{ align-items:flex-end; }
+    .mine .bubble{ background: #dffaf3 !important; }
+    .theirs{ align-items:flex-start; }
+    .theirs .bubble{ background: #ffe3ee !important; }
+    .system{ align-items:center; }
+    .system .bubble{ background:#fff4cc; border-style:dashed; font-weight:900; }
+
+    .sliderRow{
+      display:flex;
+      align-items:center;
+      gap:10px;
+      margin-top:10px;
+      padding: 10px 12px;
+      border:1px solid var(--line);
+      border-radius: 14px;
+      background: rgba(255,255,255,.75);
+    }
+    .sliderLabel{
+      font-size:12px;
+      color: var(--muted);
+      font-weight:900;
+      white-space:nowrap;
+    }
+    .sliderVal{
+      font-size:12px;
+      color: var(--muted);
+      font-weight:900;
+      width:56px;
+      text-align:right;
+      white-space:nowrap;
+    }
+    input[type="range"]{ width:100%; }
+
+    .hint{
+      margin-top:6px;
+      font-size: 12px;
+      color: var(--muted);
+      font-weight:700;
+      line-height:1.35;
+    }
+
+    .overlay{
+      position:fixed;
+      inset:0;
+      background: rgba(0,0,0,.35);
+      display:none;
+      align-items:center;
+      justify-content:center;
+      padding: 18px;
+      z-index: 999;
+    }
+    .overlayCard{
+      width:min(420px, 100%);
+      background:#fff;
+      border-radius: 18px;
+      border: 1px solid var(--line);
+      padding: 16px;
+      box-shadow: 0 18px 50px rgba(0,0,0,.18);
+      text-align:center;
+    }
+    .overlayTitle{ font-size:18px; font-weight:900; margin:0 0 8px; }
+    .overlayMsg{ font-size:13px; color:#444; font-weight:750; margin:0 0 12px; line-height:1.4; }
+    /* ✅ 팝업이 화면을 넘지 않게 + 내용만 스크롤 */
+.overlayCard{
+  max-height: calc(100vh - 36px);   /* overlay padding(18px*2) 고려 */
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;                 /* 카드 밖으로 삐져나오는 것 방지 */
+}
+
+/* ✅ 메시지 영역만 스크롤 */
+.overlayMsg{
+  overflow: auto;
+  -webkit-overflow-scrolling: touch;
+  max-height: 60vh;                 /* 타이틀/버튼 공간 남기기 */
+}
+
+/* (선택) 확인 버튼이 항상 아래에 붙도록 */
+.overlayCard > button{
+  margin-top: 10px;
+  flex: 0 0 auto;
+}
+
+  
+    /* 닉네임 입력칸: 8글자 정도만 보이게 + 공지 라벨 */
+    .nameRow{
+      display:flex;
+      align-items:center;
+      gap:10px;
+      margin-bottom:10px;
+    }
+    #user{
+      width: 14ch;      /* 8글자 + 여유 */
+      max-width: 14ch;
+    }
+    .noticeSlow{
+  flex: 1;
+  min-width: 0;
+  padding: 10px 12px;
+  border-radius: 14px;
+  border: 1px dashed var(--line);
+  background: rgba(255, 209, 232, .25);
+  color: #5a2b44;
+  font-weight: 900;
+  font-size: 16px;
+  letter-spacing: .1px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  user-select: none;
+
+  display: flex;
+  align-items: center;      /* 세로 중앙 */
+  justify-content: center;  /* 가로 중앙 */
+}
+
+
+.noticeSlow{ cursor:pointer; }
+.noticeSlow:hover{ filter: brightness(0.98); }
+.noticeSlow:active{ transform: translateY(1px); }
+
+/* ✅ 공지 버튼(닉네임 옆) - 버튼처럼 + 말줄임 */
+#btnNotice.noticeBtn{
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;  /* ✅ 추가 */
+  gap: 8px;
+  padding: 8px 12px;
+  border-radius: 999px;
+  background: #fff;
+  border: 1px solid rgba(0,0,0,0.08);
+  max-width: none;
+  overflow: hidden;
+  white-space: nowrap;
+}
+#btnGuide.noticeBtn .label{
+  font-weight: 800;
+  flex: 0 0 auto;
+}
+#btnGuide.noticeBtn .preview{
+  opacity: 0.75;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+
+  flex: 0 1 auto;   /* ✅ 여기 */
+  max-width: 70%;
+  min-width: 0;
+}
+
+
+
+/* ✅ 가이드 버튼(닉네임 옆) - 공지 버튼과 동일한 크기/말줄임 */
+#btnGuide.noticeBtn{
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 8px 12px;
+  border-radius: 999px;
+  background: #fff;
+  border: 1px solid rgba(0,0,0,0.08);
+  max-width: none;
+  overflow: hidden;
+  white-space: nowrap;
+}
+#btnGuide.noticeBtn .label{
+  font-weight: 800;
+  flex: 0 0 auto;
+}
+#btnGuide.noticeBtn .preview{
+  opacity: 0.75;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  flex: 0 1 auto;
+  max-width: 70%;
+  min-width: 0;
+}
+
+/* ✅ 메뉴 안 공지 버튼(가이드 자리로 이동) */
+#menuPanel #btnNotice.noticeMenu{
+  justify-content: space-between;
+}
+#menuPanel #btnNotice.noticeMenu .label{
+  flex: 0 0 auto;
+  font-weight: 900;
+}
+#menuPanel #btnNotice.noticeMenu .preview{
+  flex: 1 1 auto;
+  min-width: 0;
+  margin-left: 10px;
+  opacity: 0.75;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  text-align: right;
+}
+/* ✅ 입력창 아래 4버튼: 어떤 좁은 폭에서도 한 줄 유지 */
+.quickRow{
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 8px;
+  margin-top: 8px;
+  align-items: center;
+}
+
+/* ✅ 기본 button min-width(96px) 때문에 줄바꿈 생기므로 여기서 강제 해제 */
+.quickRow button{
+  min-width: 0 !important;
+  width: 100%;
+  padding: 7px 6px;
+  font-size: 12px;
+  border-radius: 999px;
+  line-height: 1.1;
+
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* (선택) 아주 좁을 때 더 촘촘하게 */
+@media (max-width: 360px){
+  .quickRow{ gap: 6px; }
+  .quickRow button{ font-size: 11px; padding: 6px 4px; }
+}
+
+
+    /* 버튼 길이(상단/핵심 4개) */
+    #btnSound, #btnLeave{ min-width: 72px; padding: 7px 9px; }
+    #btnStart, #btnReset{ min-width: 92px; padding: 10px 12px; }
+
+
+/* ✅ 가이드 팝업 테마: 아주 연한 핑크 + 은은한 하트 패턴 */
+.overlayCard.guideTheme{
+  background-color: #fff2f7; /* 아주 연한 핑크 */
+  background-image:
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='80' height='80' viewBox='0 0 80 80'%3E%3Cpath d='M40 63s-20-12.6-20-28c0-7.1 5.4-12.8 12.2-12.8 4.2 0 6.9 2.2 7.8 3.3.9-1.1 3.6-3.3 7.8-3.3 6.8 0 12.2 5.7 12.2 12.8 0 15.4-20 28-20 28z' fill='%23ff8fb4' fill-opacity='0.14'/%3E%3C/svg%3E");
+  background-size: 56px 56px;
+  background-repeat: repeat;
+}
+/* ✅ 내용 가독성 확보: 반투명 화이트 패널 */
+.overlayCard.guideTheme #ovMsg{
+  background: rgba(255,255,255,0.84);
+  padding: 12px 12px;
+  border-radius: 14px;
+  border: 1px solid rgba(242,215,234,0.95);
+  color: #3b2a33;
+}
+
+/* ===== nameRow(닉네임 + 공지) 레이아웃 정리 ===== */
+.nameRow{
+  display: flex !important;
+  align-items: center !important;
+  gap: 10px !important;
+  width: 100% !important;
+}
+
+/* 닉네임: 가운데 정렬 + 너무 커지지 않게 */
+#user{
+  width: 92px !important;        /* 취향: 80~110 */
+  flex: 0 0 auto !important;
+  text-align: center !important;
+}
+
+/* 공지 버튼: 남는 폭 전부(=채팅 폭 느낌) + 말줄임 */
+#btnNotice{
+  flex: 1 1 auto !important;
+  min-width: 0 !important;       /* 말줄임 필수 */
+  width: 100% !important;
+  justify-content: flex-start !important;
+}
+
+/* 공지 미리보기 말줄임 확실히 */
+#btnNotice .preview{
+  overflow: hidden !important;
+  text-overflow: ellipsis !important;
+  white-space: nowrap !important;
+  min-width: 0 !important;
+}
+
+/* ===== topActions 반응형 ===== */
+.topActions{
+  display: flex !important;
+  align-items: center !important;
+  gap: 8px !important;
+  flex-wrap: nowrap !important;
+}
+
+/* 접속 버튼: 화면 폭에 따라 유동 */
+#btnOnline{
+  width: clamp(72px, 16vw, 110px) !important;
+  min-width: 72px !important;
+  flex: 0 0 auto !important;
+  justify-content: center !important;
+  padding: 6px 8px !important;
+}
+
+/* 가이드/사운드/나가기 */
+.topActions .btnMini{
+  flex: 0 0 auto !important;
+  padding: 6px 10px !important;
+  white-space: nowrap !important;
+}
+
+/* (선택) 좁은 화면에서 더 컴팩트 */
+@media (max-width: 420px){
+  #btnOnline{
+    width: 70px !important;
+  }
+  .topActions .btnMini{
+    padding: 6px 8px !important;
+    font-size: 12px !important;
+  }
+}
+
+/* ===== ✅ 메뉴 드롭다운(상단 버튼 정리) ===== */
+.topActions{ position: relative !important; }
+
+/* 메뉴 버튼(상단) */
+#btnMenu{
+  flex: 0 0 auto !important;
+  padding: 6px 10px !important;
+  white-space: nowrap !important;
+}
+
+/* 나가기 버튼(상단)도 너무 길면 줄바꿈 방지 */
+#btnLeave{
+  flex: 0 0 auto !important;
+  white-space: nowrap !important;
+}
+
+/* 드롭다운 패널 */
+.menuPanel{
+  display: none;
+  position: absolute;
+  top: calc(100% + 10px);
+  right: 0;
+  width: min(320px, 92vw);
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  box-shadow: 0 14px 40px rgba(0,0,0,.12);
+  padding: 10px;
+  z-index: 999;
+}
+.menuPanel.show{ display:block; }
+
+.menuHeader{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:10px;
+  padding: 4px 2px 8px;
+}
+.menuTitle{ font-weight: 900; letter-spacing: -.2px; }
+.menuClose{
+  border: 0;
+  background: transparent;
+  font-size: 18px;
+  cursor: pointer;
+  padding: 6px 8px;
+  border-radius: 10px;
+}
+.menuClose:hover{ background: rgba(0,0,0,.04); }
+
+.menuItem{
+  width: 100%;
+  display:flex;
+  align-items:center;
+  justify-content: center;
+  gap: 8px;
+  padding: 10px 12px;
+  border-radius: 14px;
+  border: 1px solid rgba(0,0,0,.06);
+  background: #fff;
+  cursor: pointer;
+  font-weight: 800;
+}
+.menuItem:hover{ background: rgba(0,0,0,.02); }
+
+.menuRow{ margin-top: 8px; }
+
+.menuDivider{
+  height: 1px;
+  background: rgba(0,0,0,.06);
+  margin: 10px 2px;
+}
+
+.menuSliderBlock{
+  padding: 10px 10px 8px;
+  border-radius: 14px;
+  border: 1px solid rgba(0,0,0,.06);
+  background: rgba(0,0,0,.015);
+  margin-top: 10px;
+}
+.menuLabelRow{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:10px;
+  margin-bottom: 6px;
+}
+.menuLabel{ font-weight: 900; color: var(--text); }
+.menuVal{ font-weight: 900; color: var(--muted); }
+.menuSliderBlock input[type="range"]{ width: 100%; }
+
+/* 좁은 화면에서 메뉴가 너무 커 보이면 */
+@media (max-width: 420px){
+  .menuPanel{ width: min(300px, 94vw); }
+  .menuItem{ padding: 9px 10px; font-size: 13px; }
+}
+
+/* ✅ 공지 버튼: 남는 폭 전부 + 채팅폭 느낌(강제) */
+.nameRow #btnGuide.noticeBtn,
+.nameRow #btnGuide.noticeSlow,
+.nameRow #btnGuide{
+  flex: 1 1 auto !important;
+  width: 100% !important;
+  min-width: 0 !important;
+
+  display: inline-flex !important;
+  align-items: center !important;
+  gap: 8px !important;
+
+  padding: 8px 12px !important;
+  border-radius: 999px !important;
+  border: 1px solid rgba(0,0,0,0.08) !important;
+  background: #fff !important;
+  cursor: pointer !important;
+}
+
+/* ✅ 가이드 미리보기: 말줄임 확실히 */
+.nameRow #btnGuide .preview{
+  display: inline-block !important;
+  min-width: 0 !important;
+  overflow: hidden !important;
+  text-overflow: ellipsis !important;
+  white-space: nowrap !important;
+  opacity: 0.75 !important;
+}
+
+/* ✅ 가이드 버튼: 텍스트 묶음 진짜 가운데 고정(강제) */
+#btnGuide.noticeBtn{
+  justify-content: center !important;
+}
+
+#btnGuide.noticeBtn .label{
+  flex: 0 0 auto !important;
+}
+
+#btnGuide.noticeBtn .preview{
+  flex: 0 1 auto !important;     /* ✅ 공간 안 먹게 */
+  max-width: 70% !important;
+  min-width: 0 !important;
+}
+
+/* 혹시 어디선가 width:100% 같은 게 텍스트를 밀면 이것도 추가 */
+#btnGuide.noticeBtn .preview{
+  text-align: left !important;   /* 미리보기 자체는 왼→오 말줄임 유지 */
+}
+
+
+/* ===== ✅ PWA 1단계: 앱 설치 버튼/단독 실행 보정 ===== */
+#btnInstallApp.isHidden{ display:none !important; }
+@media (display-mode: standalone){
+  body{ min-height: 100dvh; }
+  .wrap{ padding-top: max(14px, env(safe-area-inset-top)); padding-bottom: max(18px, env(safe-area-inset-bottom)); }
+}
+
+/* ===== 개인 MP3 알림음(브라우저 로컬 저장) ===== */
+.soundFileBlock{ margin-top: 10px; }
+.soundFileStatus{
+  display:block;
+  min-width:0;
+  max-width: 180px;
+  overflow:hidden;
+  text-overflow:ellipsis;
+  white-space:nowrap;
+  text-align:right;
+}
+.soundFileActions{
+  display:grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap:8px;
+  margin-top:8px;
+}
+.soundFileActions button{
+  min-width:0 !important;
+  width:100%;
+  padding:9px 8px;
+  font-size:12px;
+  border-radius:12px;
+}
+.soundFileHint{
+  margin-top:7px;
+  font-size:11px;
+  line-height:1.35;
+  color:var(--muted);
+  font-weight:700;
+}
+
+</style>
+</head>
+<body>
+  <div class="wrap">
+    <div class="topbar">
+      <div class="brand">
+        <div class="icon">⏰</div>
+        <div>
+          <div>ᵔᴥᵔ</div>
+          <div class="metaSmall" id="hostLabel">HOST: -</div>
+        </div>
+      </div>
+      <div class="topActions">
+        <button class="pill pillBtn" id="btnOnline" type="button" title="접속자 목록 보기">0명 접속</button>
+        <button class="btnMini" id="btnMenu" type="button" title="메뉴">☰ 메뉴</button>
+        <button class="btnMini" id="btnLeave" title="나가기">🏃‍♂️나가기</button>
+
+        <!-- ✅ 메뉴 드롭다운(가이드/알림/볼륨/채팅창 높이) -->
+        <div class="menuPanel" id="menuPanel" aria-hidden="true">
+          <div class="menuHeader">
+            <div class="menuTitle">메뉴</div>
+            <button class="menuClose" id="btnMenuClose" type="button" title="닫기">✕</button>
+          </div>
+
+          <button class="menuItem noticeMenu" id="btnNotice" type="button" title="공지 보기"><span class="label">📌 공지</span><span class="preview" id="noticePreview">공지 없음</span></button>
+
+<div class="menuRow">
+  <button class="menuItem" id="btnInstallApp" type="button" title="홈 화면/앱으로 추가">📲 앱으로 추가</button>
+</div>
+
+          <div class="menuRow">
+            <button class="menuItem" id="btnSound" type="button" title="알림음">🔊 알림</button>
+          </div>
+
+          <!-- 개인 MP3: Firebase/서버가 아닌 현재 브라우저 IndexedDB에만 저장 -->
+          <div class="menuSliderBlock soundFileBlock">
+            <div class="menuLabelRow">
+              <span class="menuLabel">🔥 작업 시작음</span>
+              <span class="menuVal soundFileStatus" id="workSoundFileStatus" title="기본 알림음 사용 중">기본 알림음</span>
+            </div>
+            <button class="menuItem" id="btnWorkSoundFilePick" type="button" title="작업 시작 알림음 MP3 선택">🎵 작업 시작 MP3 선택</button>
+            <div class="soundFileActions">
+              <button class="btnGhost" id="btnWorkSoundPreview" type="button" disabled>▶️ 미리 듣기</button>
+              <button class="btnGhost" id="btnWorkSoundFileReset" type="button" disabled>↩️ 기본음으로</button>
+            </div>
+          </div>
+
+          <div class="menuSliderBlock soundFileBlock">
+            <div class="menuLabelRow">
+              <span class="menuLabel">☕ 휴식 시작음</span>
+              <span class="menuVal soundFileStatus" id="breakSoundFileStatus" title="기본 알림음 사용 중">기본 알림음</span>
+            </div>
+            <button class="menuItem" id="btnBreakSoundFilePick" type="button" title="휴식 시작 알림음 MP3 선택">🎵 휴식 시작 MP3 선택</button>
+            <div class="soundFileActions">
+              <button class="btnGhost" id="btnBreakSoundPreview" type="button" disabled>▶️ 미리 듣기</button>
+              <button class="btnGhost" id="btnBreakSoundFileReset" type="button" disabled>↩️ 기본음으로</button>
+            </div>
+            <div class="soundFileHint">MP3만 가능 · 각각 최대 8MB · 이 브라우저에만 저장 · 알림 때 최대 20초 재생</div>
+          </div>
+          <input id="soundFileInput" type="file" accept=".mp3,audio/mpeg,audio/mp3,audio/x-mpeg" hidden />
+
+          <div class="menuDivider"></div>
+
+          <div class="menuSliderBlock">
+            <div class="menuLabelRow">
+              <span class="menuLabel">알림음 볼륨</span>
+              <span class="menuVal" id="soundVolVal">150%</span>
+            </div>
+            <input id="soundVol" type="range" min="50" max="800" step="5" value="150" />
+          </div>
+
+          <div class="menuSliderBlock">
+            <div class="menuLabelRow">
+              <span class="menuLabel">채팅창 높이</span>
+              <span class="menuVal" id="logSizeVal">260px</span>
+            </div>
+            <input id="logSize" type="range" min="180" max="1000" value="260" />
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="card timer">
+      <div class="time" id="time">25:00</div>
+      <div class="phase" id="phase">🔥작업 중🔥</div>
+      <div class="controls">
+        <button class="btnStart" id="btnStart">⚡시작⚡</button>
+        <button class="btnGhost" id="btnPause">정지</button>
+        <button class="btnReset" id="btnReset">리셋</button>
+        <button class="btnGhost" id="btnClaim">🤚호스트 가져오기</button>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="nameRow"><input id="user" placeholder="닉네임 (예: 리로)" maxlength="8" /><div class="noticeSlow noticeBtn" id="btnGuide" title="사용 가이드" tabindex="0"><span class="label">👻가이드</span><span class="preview">⏰공용 뽀모 사용 안내⏰</span></div></div>
+
+      <div class="chatLogWrap">
+        <div id="log"></div>
+        <button class="newMessagesBtn isHidden" id="btnNewMessages" type="button" aria-live="polite" aria-label="새 메시지로 이동">새 메시지 ↓</button>
+      </div>
+<div style="margin-top:10px;">
+        <textarea id="msg" placeholder="메시지 입력 (Enter=전송 / Shift+Enter=줄바꿈)&#10;🔥오늘도 열글빡글🔥"></textarea>
+        <div class="quickRow">
+          <button class="btnReset" id="btnResetToday">🧹초기화</button>
+          <button class="btnGhost" id="btnStartSnap">🚩시작(기준)</button>
+          <button class="btnGhost" id="btnNewEpisode">🆕새편</button>
+          <button class="btnStart" id="sendBtn">전송</button>
+        </div>
+
+        <div class="hint">
+          스냅샷(현재 글자수)은 직전 스냅샷과의 차이만 누적돼요. <br/>🚩시작(기준)=오늘 기준 스냅샷 저장 · 🧹초기화=오늘 누적 0 · 🆕새편=새 회차를 0자부터
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="overlay" id="overlay">
+    <div class="overlayCard">
+      <p class="overlayTitle" id="ovTitle">알림</p>
+      <div class="overlayMsg" id="ovMsg"></div>
+      <button class="btnStart" id="ovOkBtn" onclick="hideOverlay()">확인</button>
+    </div>
+  </div>
+
+
+
+
+<!-- ✅ Firebase (Realtime DB): Apps Script HTML용 (module) -->
+<script type="module">
+  import { initializeApp } from "https://www.gstatic.com/firebasejs/11.0.1/firebase-app.js";
+  import { getAuth, signInAnonymously, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.0.1/firebase-auth.js";
+  import {
+    getDatabase, ref, push, set, update, remove, get,
+    query, limitToLast, onChildAdded, onValue, off, onDisconnect
+  } from "https://www.gstatic.com/firebasejs/11.0.1/firebase-database.js";
+
+  const firebaseConfig = {
+    apiKey: "AIzaSyBy09h77pCXYkU8JpriYihaGUrizGlvhe0",
+    authDomain: "mmagampomoo.firebaseapp.com",
+    databaseURL: "https://mmagampomoo-default-rtdb.asia-southeast1.firebasedatabase.app",
+    projectId: "mmagampomoo",
+    storageBucket: "mmagampomoo.firebasestorage.app",
+    messagingSenderId: "730289089438",
+    appId: "1:730289089438:web:d1de0f7acefa602d29048f"
+  };
+
+  const app = initializeApp(firebaseConfig);
+  const auth = getAuth(app);
+  const db = getDatabase(app);
+
+  async function ensureAnonAuth(){
+    if (!auth.currentUser) await signInAnonymously(auth);
+    return auth.currentUser;
+  }
+
+  // module 밖에서 쓰기 위해 window로 노출
+  window.FB = {
+    app, auth, db, ensureAnonAuth, onAuthStateChanged,
+    ref, push, set, update, remove, get, query, limitToLast, onChildAdded, onValue, off, onDisconnect
+  };
+</script>
+
+<script>
+  // =====================
+  // v43: 접속자(Firebase presence) 안정화 + 호스트/뽀모 흔들림(중복 ping) 제거
+  // - 채팅: Firebase 실시간
+  // - 기록/명령/뽀모/호스트: Apps Script(서버) 단일 소스
+  // - 접속자 목록: Firebase presence (stale/중복 닉네임 정리)
+  // =====================
+
+  let sessionId = null;
+  let pom = null;
+
+  // ✅ 타이머 '움찔' 제거용 앵커
+  let anchorRemainSec = null;
+  let anchorAtMs = null;
+  let lastRenderSec = null;
+  let lastAnchorSeq = 0;
+
+  let localRemaining = 25 * 60;
+
+  // UI / 상태
+  let activeCount = 0;
+  let activeNames = [];
+  let hostName = '-';
+  let iAmHost = false;
+  let isStopped = false;
+
+  // Firebase chat
+  let fbRoomId = null;
+  let fbStarted = false;
+
+  // Presence
+  let presenceStarted = false;
+  let presenceTimer = null;
+  let presenceUid = null;
+
+  // 명령 처리 큐
+  const cmdQueue_ = [];
+  let cmdWorking_ = false;
+
+  // sound
+  let soundEnabled = true;
+  let soundMult = 1.5; // 🔊 알림음 배수(기본 1.5x, 로컬 저장)
+  let userGestured = false;
+  let lastPomSeq = 0;
+  let lastPhase = null;
+  let audioCtx = null;
+  let keepAliveOsc = null;
+  let keepAliveGain = null;
+  let keepAliveOn = false;
+
+  // 개인 MP3 알림음: 현재 브라우저 IndexedDB에만 저장 (Firebase/서버 미사용)
+  // - work: 작업 시작 때, break: 휴식 시작 때 각각 따로 재생
+  // - 기존 단일 MP3(notificationMp3)는 첫 실행 시 두 칸으로 안전하게 옮깁니다.
+  const CUSTOM_SOUND_DB_NAME = 'MMAGAM_POMO_LOCAL_V1';
+  const CUSTOM_SOUND_STORE = 'settings';
+  const CUSTOM_SOUND_KEYS = {
+    work: 'notificationMp3Work',
+    break: 'notificationMp3Break',
+    legacy: 'notificationMp3'
+  };
+  const CUSTOM_SOUND_MAX_BYTES = 8 * 1024 * 1024;
+  const CUSTOM_SOUND_MAX_PLAY_MS = 20 * 1000;
+  const SOUND_PHASES = ['work', 'break'];
+
+  function createCustomSoundSlot_(){
+    return {
+      blob: null,
+      name: '',
+      url: '',
+      audio: null,
+      source: null,
+      gain: null,
+      stopTimer: null
+    };
+  }
+
+  const customSounds = {
+    work: createCustomSoundSlot_(),
+    break: createCustomSoundSlot_()
+  };
+  let customSoundStorageAvailable = true;
+  let customSoundUserChanged = { work: false, break: false }; // 늦게 끝난 복원이 새 선택/삭제를 덮지 않게 방지
+  let soundPickerTarget = 'work';
+
+  // 고유 클라이언트 ID
+  const CLIENT_ID = getClientId();
+
+  function $(id){ return document.getElementById(id); }
+
+  function escapeHtml(s){
+    return (s ?? '').toString().replace(/[&<>"']/g, m => ({
+      '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'
+    }[m]));
+  }
+
+  function fmt(sec){
+    sec = Math.max(0, Number(sec||0));
+    const m = Math.floor(sec/60);
+    const s = sec%60;
+    return `${String(m).padStart(2,'0')}:${String(s).padStart(2,'0')}`;
+  }
+
+  function fmtTsFromMs_(ms){
+    try{
+      const d = new Date(ms);
+      const h = d.getHours();
+      const ampm = (h >= 12) ? '오후' : '오전';
+      const hh = (h % 12) || 12;
+      const mm = String(d.getMinutes()).padStart(2,'0');
+      return ampm + ' ' + hh + ':' + mm;
+    }catch(e){
+      return new Date().toLocaleString();
+    }
+  }
+
+  function getClientId(){
+    // ✅ 탭(창)마다 고유 ID (여러 탭 열 때 호스트/핑 충돌 방지)
+    let id = sessionStorage.getItem('VENT_TAB_ID_V1');
+    if (!id) {
+      id = 't_' + Math.random().toString(36).slice(2) + '_' + Date.now();
+      sessionStorage.setItem('VENT_TAB_ID_V1', id);
+    }
+    return id;
+  }
+
+  function myName(){
+    const v = ($('user').value || '').trim();
+    return v || '익명';
+  }
+
+  // =====================
+  // 작품 슬롯: "현재 슬롯" 유지 (클라이언트 로컬)
+  // - /1, /2 ...가 포함된 메시지를 보내면 그 슬롯이 "현재 슬롯"이 됨
+  // - 이후 숫자/시작/새편/초기화 같은 기록 명령을 "/N" 없이 보내도 현재 슬롯에 자동 누적
+  //   (단, 일반 채팅 문장은 자동 프리픽스 안 붙임)
+  // =====================
+  function slotKey_(){
+    // 같은 닉네임이면 방이 달라도 유지되게(사용자 요청 스타일)
+    return 'VENT_ACTIVE_SLOT__' + myName();
+  }
+  function getActiveSlot_(){
+    try{
+      const v = localStorage.getItem(slotKey_());
+      const n = Number(v);
+      if (Number.isFinite(n) && n >= 0 && n <= 99) return n|0;
+    }catch(e){}
+    return 0;
+  }
+  function setActiveSlot_(n){
+    const nn = Math.max(0, Math.min(99, Number(n)||0))|0;
+    try{ localStorage.setItem(slotKey_(), String(nn)); }catch(e){}
+    return nn;
+  }
+  function extractExplicitSlot_(text){
+    const s0 = String(text || '').trim();
+    if (!s0) return null;
+
+    // '닉네임: /2 ...' or '닉네임 /2 ...' 형태를 위해 prefix 제거
+    let s = s0.replace(/^[^\d:+\-]{1,20}\s*:\s*/,'').replace(/^[^\d:+\-]{1,20}\s+(?=\/\d{1,2}\b)/,'');
+    const m = s.match(/^\/(\d{1,2})\b/);
+    if (!m) return null;
+    const n = Number(m[1]);
+    if (!Number.isFinite(n) || n < 0 || n > 99) return null;
+    return n|0;
+  }
+  function applyActiveSlotToMsg_(rawMsg){
+    const raw = String(rawMsg || '').trim();
+    if (!raw) return { msg: raw, activeSlot: getActiveSlot_(), explicit: null };
+
+    const explicit = extractExplicitSlot_(raw);
+    if (explicit !== null){
+      setActiveSlot_(explicit);
+      // "/0" 같은 "슬롯 전환만" 입력이면 서버로 보내지 않음
+      if (/^\/\d{1,2}\s*$/.test(raw)){
+        return { msg: '', activeSlot: explicit, explicit, switchedOnly: true };
+      }
+      return { msg: raw, activeSlot: explicit, explicit };
+    }
+
+    const active = getActiveSlot_();
+    // 일반 채팅은 그대로, "명령"만 현재 슬롯에 자동 라우팅
+    if (active > 0 && isCommandMsg_(raw)){
+      return { msg: `/${active} ${raw}`, activeSlot: active, explicit: null };
+    }
+    return { msg: raw, activeSlot: active, explicit: null };
+  }
+
+  function markUserGesture(){
+    userGestured = true;
+    ensureAudio_();
+    // 브라우저 자동재생 정책 대응: 선택한 MP3들을 무음으로 한 번 준비
+    primeCustomSound_();
+  }
+
+  function showOverlay(title, msg, isHtml=false, hideOkBtn=false){
+    $('ovTitle').textContent = title;
+    if (isHtml) $('ovMsg').innerHTML = msg;
+    else $('ovMsg').textContent = msg;
+    const okBtn = document.getElementById('ovOkBtn');
+    if (okBtn) okBtn.style.display = hideOkBtn ? 'none' : '';
+    $('overlay').style.display = 'flex';
+  }
+
+  function hideOverlay(){
+    document.querySelector('.overlayCard')?.classList.remove('guideTheme');
+    const okBtn = document.getElementById('ovOkBtn');
+    if (okBtn) okBtn.style.display = '';
+    $('overlay').style.display = 'none';
+    // ✅ 공지 팝업은 "닫을 때" 읽음 처리
+    if (window.__OVERLAY_KIND === 'notice') {
+      const at = Number(window.__NOTICE_PENDING_SEEN_AT || 0);
+      if (at) {
+        try{ localStorage.setItem('VENT_NOTICE_LASTSEEN_AT', String(at)); }catch(e){}
+      }
+      window.__NOTICE_PENDING_SEEN_AT = 0;
+      window.__OVERLAY_KIND = '';
+    }
+  }
+
+  function applyHostUI(hostNm, amHost){
+    hostName = hostNm || '-';
+    iAmHost = !!amHost;
+    $('hostLabel').textContent = `HOST: ${hostName}${iAmHost ? ' (나)' : ''}`;
+
+    // 버튼은 "서버가 인정한 호스트"만 활성화
+    $('btnStart').disabled = !iAmHost;
+    $('btnPause').disabled = !iAmHost;
+    $('btnReset').disabled = !iAmHost;
+  }
+
+  function renderTop(){
+    $('btnOnline').textContent = `${activeCount}명 접속`;
+    applyHostUI(hostName, iAmHost);
+    $('btnSound').textContent = soundEnabled ? '🔊 알림' : '🔇 알림';
+  }
+
+  // =====================
+  // Firebase helpers
+  // =====================
+  async function fbEnsureReady_(){
+    if (!window.FB) throw new Error('Firebase not loaded');
+    await window.FB.ensureAnonAuth();
+  }
+
+  function fbMessagesPath_(roomId){
+    return 'rooms/' + roomId + '/messages';
+  }
+  function fbPresenceConnPath_(roomId){
+    return 'rooms/' + roomId + '/presenceConn';
+  }
+  function fbPresenceNamePath_(roomId){
+    return 'rooms/' + roomId + '/presenceName';
+  }
+
+  // =====================
+  // Notice (공지) - Firebase 기반
+  // - rooms/<roomId>/notice : { text, updatedAt, by }
+  // - 접속 시 새 공지면 1회 팝업(닫을 때 읽음 처리)
+  // - 상단/닉네임 옆 '공지' 버튼으로 언제든 다시 확인
+  // - 공지 수정은 비밀번호(클라이언트)로 보호 (간단 운영용)
+  // =====================
+  const NOTICE_PATH_ = (roomId) => `rooms/${String(roomId)}/notice`;
+  const NOTICE_LS_KEY_ = 'VENT_NOTICE_LASTSEEN_AT';
+  const NOTICE_ADMIN_SS_KEY_ = 'VENT_NOTICE_ADMIN_OK';
+
+  // ✅ 여기에 SHA-256 해시를 넣어주세요 (한 번만)
+  //   1) 앱 접속 → F12 콘솔에서: makeNoticeHash('비밀번호') 실행
+  //   2) 출력된 해시를 아래 문자열에 붙여넣기
+  const NOTICE_ADMIN_PW_SHA256 = '2d3a38767f3cdad77fc39ae159cf7bb5be9c335830ad76527d22c3023f5726fc';
+
+  let noticeRoomId_ = null;
+  let noticeUnsub_ = null;
+  let noticeCache_ = { text:'', updatedAt:0, by:'' };
+
+  function noticeFirstLine_(t){
+    const s = String(t || '').replace(/\r/g,'').trim();
+    if (!s) return '';
+    return s.split('\n')[0].trim();
+  }
+
+  function updateNoticeButton_(){
+    const el = document.getElementById('btnNotice');
+    if (!el) return;
+    const previewEl = document.getElementById('noticePreview');
+
+    const t = (noticeCache_.text || '').trim();
+    if (!t){
+      // 공지 없음 상태
+      if (previewEl) previewEl.textContent = '공지 없음';
+      else el.textContent = '📌 공지 없음';
+      el.style.opacity = '0.85';
+      return;
+    }
+
+    // 첫 줄(제목처럼)만 버튼에 표시 + 길면 말줄임
+    const head = noticeFirstLine_(t) || '공지';
+    if (previewEl) previewEl.textContent = head;
+    else el.textContent = `📌 ${head}`;
+    el.style.opacity = '1';
+  }
+
+  async function sha256Hex_(text){
+    if (!window.crypto?.subtle) throw new Error('SHA-256 not supported');
+    const enc = new TextEncoder().encode(String(text||''));
+    const buf = await window.crypto.subtle.digest('SHA-256', enc);
+    return Array.from(new Uint8Array(buf)).map(b=>b.toString(16).padStart(2,'0')).join('');
+  }
+
+  // ✅ 콘솔에서 makeNoticeHash('비번') 실행하면 해시가 찍혀요
+  window.makeNoticeHash = async function(pw){
+    const h = await sha256Hex_(pw);
+    console.log(h);
+    return h;
+  };
+
+  function noticeIsAdmin_(){
+    try{ return sessionStorage.getItem(NOTICE_ADMIN_SS_KEY_) === '1'; }catch(e){ return false; }
+  }
+
+  async function noticeEnsureAdmin_(){
+    if (noticeIsAdmin_()) return true;
+
+    if (!NOTICE_ADMIN_PW_SHA256){
+      showOverlay('공지 비밀번호 미설정', 'NOTICE_ADMIN_PW_SHA256가 비어있어요.\n콘솔에서 makeNoticeHash("비번") 실행 → 해시를 코드에 넣어주세요.');
+      return false;
+    }
+
+    const pw = prompt('공지 수정 비밀번호를 입력해줘.');
+    if (pw === null) return false;
+
+    try{
+      const h = await sha256Hex_(pw);
+      if (h === NOTICE_ADMIN_PW_SHA256){
+        sessionStorage.setItem(NOTICE_ADMIN_SS_KEY_, '1');
+        return true;
+      }
+    }catch(e){}
+
+    alert('비밀번호가 틀렸어!');
+    return false;
+  }
+
+  function noticeRenderHtml_(mode){
+    const t = String(noticeCache_.text || '').trim();
+    const by = String(noticeCache_.by || '').trim();
+    const up = Number(noticeCache_.updatedAt || 0);
+
+    const meta = up
+      ? `<div style="font-size:12px; opacity:.85; font-weight:800; margin-top:8px;">마지막 업데이트: ${escapeHtml(fmtTsFromMs_(up))}${by ? ' · ' + escapeHtml(by) : ''}</div>`
+      : '';
+
+    if (mode === 'edit'){
+      const v = escapeHtml(t);
+      return `
+        <div style="text-align:left;">
+          <div style="font-weight:900; margin-bottom:8px;">📌 공지 수정</div>
+          <textarea id="noticeEditText" style="height:180px; width:100%; border:1px solid var(--line); border-radius:14px; padding:10px 12px; font-weight:800; resize:vertical;">${v}</textarea>
+          <div style="display:flex; gap:8px; justify-content:flex-end; margin-top:10px;">
+            <button class="btnGhost" type="button" onclick="window.noticeOpen(false)">취소</button>
+            <button class="btnStart" type="button" onclick="window.noticeSave()">저장</button>
+          </div>
+          ${meta}
+        </div>`;
+    }
+
+    const body = t
+      ? `<div style="white-space:pre-wrap; word-break:break-word; overflow-wrap:anywhere; line-height:1.55; font-weight:800;">${escapeHtml(t)}</div>`
+      : `<div style="opacity:.8; font-weight:800;">오늘 공지는 아직 없어요.</div>`;
+
+    const editBtn = `<button class="btnGhost" type="button" onclick="window.noticeTryEdit()">✏️ 수정</button>`;
+
+    return `
+      <div style="text-align:left;">
+        <div style="display:flex; align-items:center; justify-content:space-between; gap:10px;">
+          <div style="font-weight:900;">📌 오늘의 공지</div>
+          ${editBtn}
+        </div>
+        <div style="margin-top:10px;">${body}</div>
+        ${meta}
+      </div>`;
+  }
+
+  function noticeOpen_(force){
+    window.__OVERLAY_KIND = 'notice';
+    // 팝업으로 본 경우엔 닫을 때 읽음 처리(확인 버튼)
+    if (noticeCache_.updatedAt) window.__NOTICE_PENDING_SEEN_AT = noticeCache_.updatedAt;
+    showOverlay(force ? '공지 수정' : '공지', noticeRenderHtml_(force ? 'edit' : 'view'), true, !!force);
+  }
+
+  function maybeAutoPopupNotice_(){
+    const t = String(noticeCache_.text || '').trim();
+    const up = Number(noticeCache_.updatedAt || 0);
+    if (!t || !up) return;
+
+    let lastSeen = 0;
+    try{ lastSeen = Number(localStorage.getItem(NOTICE_LS_KEY_) || 0); }catch(e){}
+
+    if (up > lastSeen){
+      // ✅ 자동 팝업은 1회만: 닫을 때 lastSeen 갱신
+      window.__NOTICE_PENDING_SEEN_AT = up;
+      window.__OVERLAY_KIND = 'notice';
+      showOverlay('공지', noticeRenderHtml_('view'), true);
+    }
+  }
+
+  async function initNotice_(roomId){
+    if (!roomId) return;
+    const rid = String(roomId);
+    if (noticeRoomId_ === rid) return;
+
+    // 기존 구독 해제
+    try{ if (noticeUnsub_) noticeUnsub_(); }catch(e){}
+    noticeUnsub_ = null;
+    noticeRoomId_ = rid;
+
+    try{
+      await fbEnsureReady_();
+      const nref = window.FB.ref(window.FB.db, NOTICE_PATH_(rid));
+      noticeUnsub_ = window.FB.onValue(nref, (snap)=>{
+        const v = snap.exists() ? (snap.val() || {}) : {};
+        noticeCache_ = {
+          text: String(v.text || '').slice(0, 4000),
+          updatedAt: Number(v.updatedAt || 0),
+          by: String(v.by || '').slice(0, 20)
+        };
+        updateNoticeButton_();
+        maybeAutoPopupNotice_();
+      });
+    }catch(e){
+      console.warn('notice init failed', e);
+    }
+  }
+
+  // 글로벌 핸들러(overlay 내부 버튼에서 호출)
+  window.noticeOpen = function(forceEdit){ noticeOpen_(!!forceEdit); };
+  window.noticeTryEdit = async function(){
+    markUserGesture();
+    const ok = await noticeEnsureAdmin_();
+    if (ok) noticeOpen_(true);
+  };
+  window.noticeSave = async function(){
+    markUserGesture();
+    const ok = await noticeEnsureAdmin_();
+    if (!ok) return;
+
+    const ta = document.getElementById('noticeEditText');
+    const text = (ta ? ta.value : '').replace(/\r/g,'').trim();
+
+    try{
+      await fbEnsureReady_();
+      const rid = String(sessionId || noticeRoomId_ || '');
+      if (!rid) throw new Error('no roomId');
+
+      const nref = window.FB.ref(window.FB.db, NOTICE_PATH_(rid));
+      await window.FB.set(nref, {
+        text,
+        updatedAt: Date.now(),
+        by: myName()
+      });
+
+      // 저장 직후 보기 모드로
+      noticeOpen_(false);
+    }catch(e){
+      alert('공지 저장 실패! (권한/네트워크 확인)');
+    }
+  };
+
+  async function fbSend_(user, text, type){
+    await fbEnsureReady_();
+    const roomId = fbRoomId || sessionId;
+    const r = window.FB.ref(window.FB.db, fbMessagesPath_(String(roomId)));
+    const p = window.FB.push(r);
+    await window.FB.set(p, {
+      ts: Date.now(),
+      name: String(user||'익명').slice(0,12),
+      text: String(text||'').slice(0,500),
+      type: String(type||'chat')
+    });
+  }
+
+  async function initFirebaseChat_(roomId){
+    if (!roomId) return;
+    const rid = String(roomId);
+    if (fbRoomId && fbRoomId !== rid) fbStarted = false;
+    fbRoomId = rid;
+    if (fbStarted) return;
+    fbStarted = true;
+
+    try{
+      await fbEnsureReady_();
+      const q = window.FB.query(
+        window.FB.ref(window.FB.db, fbMessagesPath_(fbRoomId)),
+        window.FB.limitToLast(250)
+      );
+
+      window.FB.onChildAdded(q, (snap) => {
+        try{
+          const v = snap.val() || {};
+          const ts = fmtTsFromMs_(v.ts || Date.now());
+          const name = v.name || '익명';
+          const text = v.text || '';
+          appendChatRows([[ts, name, text, snap.key || String(v.ts || Date.now())]]);
+        }catch(e){}
+      });
+
+    }catch(e){
+      console.warn('Firebase chat init failed', e);
+      fbStarted = false;
+    }
+  }
+
+  // =====================
+// Guide (가이드) - Firebase 기반
+// - rooms/<roomId>/guide : { text, updatedAt, by }
+// - 가이드는 '👻가이드' 버튼에서 언제든 확인 가능
+// - 가이드 수정은 공지와 같은 비밀번호(클라이언트 SHA-256)로 보호
+//   👉 즉, 이제 가이드 문구 바꾸려고 인덱스 파일을 계속 수정할 필요가 없어요!
+// =====================
+const GUIDE_PATH_ = (roomId) => `rooms/${String(roomId)}/guide`;
+let guideRoomId_ = null;
+let guideUnsub_ = null;
+let guideCache_ = { text:'', updatedAt:0, by:'' };
+
+// 기본 가이드(DB에 아직 없을 때 보여줄 내용)
+const GUIDE_DEFAULT_TEXT_ = "⏰ 뽀모 사용 가이드⚡\n• 시작 : 작업 25분 → 휴식 5분 자동 반복\n• 정지 : 타이머 일시 정지\n• 리셋 : 현재 사이클 초기화\n• 알림 : 소리 켜기/끄기 (알람 들으시려면 한번 클릭해주셔야 함!)\n\n✍기록 방법\n• 기준 - 현재 스냅샷 기준 확인 가능\n•기준이 없다는 메시지 확인 후 채팅으로 시작할 글자수 남기기\n 🔥0부터 시작해도 ok, 3788처럼 시작할 글자수도 ok!\n• 기준이 잡힌 후부터는 현재까지 쓴 글자수를 채팅으로 남기기\n 🔥자동으로 누적 기록 * +684 (현재 0 / 오늘 누적 684)\n• 초기화 : 오늘 기록 초기화(누적/스냅샷/기준)\n• 새편 : 새 회차(0부터) 시작(기존 누적 글자수에 자동 포함)\n\n• /0 : 기본 작품: 한 작품만 기록하실 땐 따로 명령어 없이 숫자만 쭉쭉 입력(먼슬리에 전체 통계 확인 가능)\n• /1, /2, /3... : 다수 작품 기록 가능!  \n 🔥/1 시작 1000, 2000...\n 🔥/2 시작 0, 1000, 2000...\n 🔥작업하다가 다시 기본 작품에 글자수를 넣고 싶을 땐 /0 글자수!!!\n\n💬 채팅 명령어\n• 수정 : 수정 모드 (기록X, 시스템 메시지만)\n• 퇴고 : 퇴고 모드 (기록X, 시스템 메시지만)\n• 시놉 : 시놉 작성 중 (기록X, 시스템 메시지만)\n• 트릿 : 트릿 작성 중 (기록X, 시스템 메시지만)\n• 자료조사 : 자료 조사 중 (기록X, 시스템 메시지만)\n• 인풋 : 인풋 중 (기록X, 시스템 메시지만)\n\n😻그 외 ( 또 다른 문의가 있을 시 방장에게 1:1 줍쇼!! )\n• 호스트를 기준으로 뽀모 타이머가 돌아갑니다\n• 뽀모를 마무리하고 나가실 땐 🏃‍♂️나가기 버튼 꼭 눌러주시기";
+
+function guidePreviewText_(t){
+  const s = String(t || '').trim();
+  if (!s) return '⏰공용 뽀모 사용 안내⏰';
+  const line = s.split(/\r?\n/).map(x=>x.trim()).find(x=>x);
+  return (line || '⏰공용 뽀모 사용 안내⏰').slice(0, 80);
+}
+
+function guideSetPreview_(){
+  const el = document.querySelector('#btnGuide .preview');
+  if (!el) return;
+  const t = String(guideCache_.text || '').trim() || GUIDE_DEFAULT_TEXT_;
+  el.textContent = guidePreviewText_(t);
+}
+
+function guideTextToHtml_(txt){
+  const t = String(txt || '').trim();
+  const lines = t.split(/\r?\n/);
+  const out = [];
+  for (const raw of lines){
+    const line = raw.replace(/\t/g, '  ');
+    const s = line.trimEnd();
+    if (!s.trim()){ out.push('<div style="height:8px"></div>'); continue; }
+    const esc = escapeHtml(s);
+    // 간단 강조 룰
+    if (esc.startsWith('⏰') || esc.startsWith('✍') || esc.startsWith('💬') || esc.startsWith('😻')){
+      out.push(`<div style="font-weight:900; margin-top:6px;">${esc}</div>`);
+    } else if (esc.startsWith('🔥')){
+      out.push(`<div style="margin-left:14px; font-weight:850;">${esc}</div>`);
+    } else if (esc.startsWith('•')){
+      out.push(`<div>${esc}</div>`);
+    } else {
+      out.push(`<div>${esc}</div>`);
+    }
+  }
+  return `<div style="text-align:left; line-height:1.75;">${out.join('')}<div style="height:4px"></div></div>`;
+}
+
+function guideRenderHtml_(mode){
+  const tRaw = String(guideCache_.text || '').trim();
+  const t = tRaw || GUIDE_DEFAULT_TEXT_;
+  const by = String(guideCache_.by || '').trim();
+  const up = Number(guideCache_.updatedAt || 0);
+
+  const meta = up
+    ? `<div style="font-size:12px; opacity:.85; font-weight:800; margin-top:10px;">마지막 업데이트: ${escapeHtml(fmtTsFromMs_(up))}${by ? ' · ' + escapeHtml(by) : ''}</div>`
+    : `<div style="font-size:12px; opacity:.75; font-weight:800; margin-top:10px;">(아직 저장된 가이드가 없어서 기본 가이드를 보여주고 있어요)</div>`;
+
+  if (mode === 'edit'){
+    const v = escapeHtml(tRaw || GUIDE_DEFAULT_TEXT_);
+    return `
+      <div style="text-align:left;">
+        <div style="font-weight:900; margin-bottom:8px;">👻 가이드 수정</div>
+        <div style="font-size:12px; opacity:.85; font-weight:800; margin:0 0 10px; line-height:1.35;">
+          • 여기서 저장하면 <b>모든 사람</b>에게 즉시 반영돼요.<br/>
+          • 줄바꿈/이모지/기호 전부 OK!
+        </div>
+        <textarea id="guideEditBox" style="height:220px; font-weight:750;">${v}</textarea>
+        <div style="display:flex; gap:8px; justify-content:space-between; margin-top:10px;">
+          <button class="btnGhost" type="button" onclick="guideOpen(false)">취소</button>
+          <button class="btnStart" type="button" onclick="guideSave()">저장</button>
+        </div>
+      </div>
+    `;
+  }
+
+  const body = guideTextToHtml_(t);
+  const editBtn = noticeIsAdmin_()
+    ? `<button class="btnGhost" type="button" style="margin-top:10px; width:100%;" onclick="guideOpen(true)">✏️ 가이드 수정</button>`
+    : `<button class="btnGhost" type="button" style="margin-top:10px; width:100%;" onclick="guideTryEdit()">✏️ 가이드 수정</button>`;
+
+  return `
+    ${body}
+    ${meta}
+    ${editBtn}
+  `;
+}
+
+async function initGuide_(roomId){
+  if (!roomId) return;
+  const rid = String(roomId);
+  if (guideRoomId_ === rid){ guideSetPreview_(); return; }
+
+  try{ if (guideUnsub_) guideUnsub_(); }catch(e){}
+  guideUnsub_ = null;
+  guideRoomId_ = rid;
+
+  // RTDB 구독
+  try{
+    await fbEnsureReady_();
+    const r = window.FB.ref(window.FB.db, GUIDE_PATH_(rid));
+    const cb = (snap)=>{
+      const v = snap && snap.val ? snap.val() : null;
+      if (v && typeof v === 'object'){
+        guideCache_ = {
+          text: (v.text ?? ''),
+          updatedAt: Number(v.updatedAt ?? 0),
+          by: (v.by ?? '')
+        };
+      } else {
+        guideCache_ = { text:'', updatedAt:0, by:'' };
+      }
+      guideSetPreview_();
+    };
+    window.FB.onValue(r, cb);
+    guideUnsub_ = ()=> window.FB.off(r, 'value', cb);
+  }catch(e){
+    // Firebase 미초기화/오류여도 앱이 죽지 않게
+    console.warn('guide init failed', e);
+    guideCache_ = { text:'', updatedAt:0, by:'' };
+    guideSetPreview_();
+  }
+}
+
+// 글로벌 핸들러(overlay 내부 버튼에서 호출)
+window.guideOpen = function(forceEdit){
+    markUserGesture();
+    const edit = !!forceEdit;
+    showOverlay(edit ? '가이드 수정' : '가이드', guideRenderHtml_(edit ? 'edit' : 'view'), true, edit);
+    document.querySelector('.overlayCard')?.classList.add('guideTheme');
+  };
+
+window.guideTryEdit = async function(){
+  const ok = await noticeEnsureAdmin_();
+  if (!ok) return;
+  window.guideOpen(true);
+};
+
+window.guideSave = async function(){
+  const ok = await noticeEnsureAdmin_();
+  if (!ok) return;
+
+  const box = document.getElementById('guideEditBox');
+  if (!box) return;
+  const newText = String(box.value || '').trim();
+
+  const rid = String(guideRoomId_ || sessionId || '');
+  if (!rid){
+    alert('roomId가 없어 저장할 수 없어요. 새로고침 후 다시 시도해줘!');
+    return;
+  }
+
+  const by = String(
+    (typeof myName === 'function')
+      ? myName()
+      : (document.getElementById('user')?.value || '')
+  ).trim();
+
+  try{
+    await fbEnsureReady_();
+    const gref = window.FB.ref(window.FB.db, GUIDE_PATH_(rid));
+    await window.FB.set(gref, {
+      text: newText,
+      updatedAt: Date.now(),
+      by: by || ''
+    });
+    // 저장 후 보기로
+    window.guideOpen(false);
+  }catch(e){
+    console.error(e);
+    alert('가이드 저장에 실패했어. (Firebase 권한/네트워크 확인)');
+  }
+};
+
+  // =====================
+  // Presence (접속자) - Firebase 기반 (멀티 탭/기기 안정)
+  // - uid 아래에 connection(connId)들을 쌓고, 각 연결만 onDisconnect로 제거
+  //   => 한 사람이 탭을 여러 개 열어도 목록이 튀거나 사라지지 않음
+  // =====================
+  let presenceConnKey = null;
+
+  // 실시간 접속자 리스트(딜레이 최소화)
+  let presenceLiveUnsub = null;
+  let presenceLiveRoomId = null;
+  let presenceLiveVal = null;
+  let presenceLiveAt = 0;
+
+  // onDisconnect가 못 잡는 예외(브라우저 강제종료/백그라운드) 대비용
+  const PRESENCE_STALE_MS = 45000;
+
+  function computePresenceFromConn_(val){
+    const now = Date.now();
+    const items = [];
+    const obj = val || {};
+    for (const uid of Object.keys(obj)){
+      const conns = obj[uid] || {};
+      let best = null;
+      for (const cid of Object.keys(conns)){
+        const v = conns[cid];
+        if (!v || !v.ts) continue;
+        const ts = Number(v.ts);
+        if (!Number.isFinite(ts)) continue;
+        if ((now - ts) > PRESENCE_STALE_MS) continue;
+        if (!best || ts > best.ts){
+          best = { uid, name: String(v.name || '익명').trim().slice(0,12), ts };
+        }
+      }
+      if (best) items.push(best);
+    }
+    const dis = _disambiguateNames_(items);
+    return { count: dis.length, names: dis };
+  }
+
+  function startPresenceLive_(roomId){
+    if (!roomId) return;
+    const rid = String(roomId);
+    if (presenceLiveRoomId === rid && presenceLiveUnsub) return;
+
+    stopPresenceLive_();
+    presenceLiveRoomId = rid;
+
+    try{
+      const root = window.FB.ref(window.FB.db, fbPresenceConnPath_(rid));
+      presenceLiveUnsub = window.FB.onValue(root, (snap)=>{
+        presenceLiveVal = snap.exists() ? (snap.val() || {}) : {};
+        presenceLiveAt = Date.now();
+
+        const r = computePresenceFromConn_(presenceLiveVal);
+        activeCount = r.count;
+        activeNames = r.names;
+        renderTop();
+      }, (err)=>{
+        console.warn('presence onValue error', err);
+      });
+    }catch(e){
+      console.warn('startPresenceLive failed', e);
+    }
+  }
+
+  function stopPresenceLive_(){
+    try{
+      if (presenceLiveUnsub) presenceLiveUnsub();
+    }catch(e){}
+    presenceLiveUnsub = null;
+    presenceLiveRoomId = null;
+    presenceLiveVal = null;
+    presenceLiveAt = 0;
+  }
+
+  async function startPresence_(){
+    if (presenceStarted) return;
+    if (!sessionId) return;
+
+    try{
+      await fbEnsureReady_();
+      const user = window.FB.auth.currentUser;
+      if (!user) return;
+
+      presenceUid = user.uid;
+      const roomId = String(sessionId);
+      const nm = String(myName()).trim().slice(0,12) || '익명';
+
+      // 이름 저장(참고용)
+      const nameRef = window.FB.ref(window.FB.db, `${fbPresenceNamePath_(roomId)}/${presenceUid}`);
+      try{ await window.FB.set(nameRef, { name: nm, ts: Date.now() }); }catch(e){}
+
+      // 연결 노드: uid 아래 push로 connId 생성
+      const connRoot = window.FB.ref(window.FB.db, `${fbPresenceConnPath_(roomId)}/${presenceUid}`);
+      const connRef = window.FB.push(connRoot);
+      presenceConnKey = connRef.key;
+
+      // 이 연결이 끊기면 이 connId만 제거
+      try{ window.FB.onDisconnect(connRef).remove(); }catch(e){}
+
+      // 최초 등록
+      await window.FB.set(connRef, {
+        name: nm,
+        ts: Date.now(),
+        cid: CLIENT_ID
+      });
+
+      // 하트비트
+      presenceTimer = setInterval(async ()=>{
+        try{
+          const nm2 = String(myName()).trim().slice(0,12) || '익명';
+          await window.FB.update(connRef, { name: nm2, ts: Date.now() });
+          // nameRef도 가끔 갱신
+          if (Math.random() < 0.35) await window.FB.update(nameRef, { name: nm2, ts: Date.now() });
+        }catch(e){}
+      }, 15000);
+
+      // 실시간 구독 시작(들어옴/나감 거의 즉시 반영)
+      startPresenceLive_(roomId);
+
+      presenceStarted = true;
+
+    }catch(e){
+      console.warn('startPresence failed', e);
+    }
+  }
+
+  async function stopPresence_(){
+    try{
+      if (presenceTimer) clearInterval(presenceTimer);
+      presenceTimer = null;
+      if (!presenceStarted) return;
+      await fbEnsureReady_();
+      if (!presenceUid || !sessionId || !presenceConnKey) return;
+      const roomId = String(sessionId);
+      const connRef = window.FB.ref(window.FB.db, `${fbPresenceConnPath_(roomId)}/${presenceUid}/${presenceConnKey}`);
+      await window.FB.remove(connRef);
+    }catch(e){}
+    presenceStarted = false;
+    // 구독 해제(탭 전환/룸 전환 시 누수 방지)
+    stopPresenceLive_();
+  }
+
+  function _disambiguateNames_(items){
+    // 같은 닉네임이 여러 uid에 걸리면 uid 꼬리로 구분
+    const counts = {};
+    for (const it of items){
+      counts[it.name] = (counts[it.name]||0) + 1;
+    }
+    return items.map(it=>{
+      if ((counts[it.name]||0) <= 1) return it.name;
+      return `${it.name}·${String(it.uid).slice(-4)}`;
+    });
+  }
+
+  async function refreshPresenceList_(){
+    // 목록은 필요할 때만 1회 GET (버튼 클릭/상단 숫자 업데이트)
+    if (!sessionId) return { count: 0, names: [] };
+
+    // 실시간 캐시가 있으면 우선 사용(버튼 클릭 시 즉시 반영)
+    if (presenceLiveVal){
+      return computePresenceFromConn_(presenceLiveVal);
+    }
+    try{
+      await fbEnsureReady_();
+      const roomId = String(sessionId);
+      const root = window.FB.ref(window.FB.db, fbPresenceConnPath_(roomId));
+      const snap = await window.FB.get(root);
+      const now = Date.now();
+      const val = snap.exists() ? (snap.val() || {}) : {};
+
+      // uid별로 살아있는 conn 하나라도 있으면 online
+      const pick = [];
+      for (const uid of Object.keys(val)){
+        const conns = val[uid] || {};
+        let best = null;
+        for (const cid of Object.keys(conns)){
+          const v = conns[cid];
+          if (!v || !v.ts) continue;
+          const ts = Number(v.ts);
+          // 60초 이상 갱신 없으면 stale
+          if ((now - ts) > 60000) continue;
+          if (!best || ts > best.ts){
+            best = { uid, name: String(v.name||'익명').trim().slice(0,12), ts };
+          }
+        }
+        if (best) pick.push(best);
+      }
+
+      // 보기용 닉네임(중복 구분)
+      const displayNames = _disambiguateNames_(pick);
+      // 정렬
+      const names = displayNames.sort((a,b)=>a.localeCompare(b,'ko'));
+      return { count: pick.length, names };
+    }catch(e){
+      return { count: activeCount || 0, names: activeNames || [] };
+    }
+  }
+
+  async function openOnlineList(){
+    markUserGesture();
+
+    // 실시간 구독이 켜져 있으면(대부분) 즉시 목록이 준비됨
+    try{ if (sessionId) await startPresence_(); }catch(e){}
+
+    // 혹시 구독이 아직 안 붙었거나(첫 접속), 규칙/네트워크로 못 읽는 경우만 1회 GET
+    if (!presenceLiveVal){
+      const r = await refreshPresenceList_();
+      activeCount = r.count;
+      activeNames = r.names;
+    }else{
+      const r = computePresenceFromConn_(presenceLiveVal);
+      activeCount = r.count;
+      activeNames = r.names;
+    }
+
+    renderTop();
+
+    const list = activeNames || [];
+    const html = list.length
+      ? `<div style="text-align:left; font-weight:900; margin-bottom:8px;">현재 접속자</div>` +
+        `<div style="text-align:left; line-height:1.7;">` +
+        list.map(n=>`• ${escapeHtml(n)}`).join('<br/>') +
+        `</div>`
+      : `아직 접속자가 없어요.`;
+    showOverlay('접속자 목록', html, true);
+  }
+
+  // =====================
+  // 채팅 렌더
+  // =====================
+  const seenIds = new Set();
+  let sending = false;
+
+  // ✅ Mac/Safari/Chrome 한글 IME 조합 중 Enter 전송 방지
+  // - 조합 중 keydown Enter가 먼저 들어오면 마지막 글자가 중복/잔류할 수 있음
+  let chatImeComposing = false;
+  let chatCompositionEndedAt = 0;
+  let unreadChatCount = 0;
+  const CHAT_NEAR_BOTTOM_PX = 56;
+
+  function isChatNearBottom_(log){
+    if (!log) return true;
+    return (log.scrollHeight - log.scrollTop - log.clientHeight) <= CHAT_NEAR_BOTTOM_PX;
+  }
+
+  function updateNewMessagesButton_(){
+    const btn = $('btnNewMessages');
+    if (!btn) return;
+
+    const count = Math.max(0, Number(unreadChatCount) || 0);
+    btn.classList.toggle('isHidden', count === 0);
+    if (count <= 0) return;
+
+    const label = count === 1 ? '새 메시지 ↓' : `새 메시지 ${count}개 ↓`;
+    btn.textContent = label;
+    btn.setAttribute('aria-label', `${count}개의 새 메시지로 이동`);
+  }
+
+  function clearUnreadChat_(){
+    if (unreadChatCount === 0) return;
+    unreadChatCount = 0;
+    updateNewMessagesButton_();
+  }
+
+  function scrollChatToLatest_(){
+    const log = $('log');
+    if (!log) return;
+
+    // 렌더 직후 높이가 한 프레임 뒤 확정되는 경우까지 안전하게 처리
+    log.scrollTop = log.scrollHeight;
+    requestAnimationFrame(()=>{
+      log.scrollTop = log.scrollHeight;
+    });
+    clearUnreadChat_();
+  }
+
+  function initNewMessagesButton_(){
+    const log = $('log');
+    const btn = $('btnNewMessages');
+    if (!log || !btn) return;
+
+    log.addEventListener('scroll', ()=>{
+      // 사용자가 직접 최신 영역까지 내려오면 버튼은 자동으로 사라짐
+      if (isChatNearBottom_(log)) clearUnreadChat_();
+    }, { passive: true });
+
+    btn.addEventListener('click', ()=>{
+      markUserGesture();
+      scrollChatToLatest_();
+    });
+
+    updateNewMessagesButton_();
+  }
+
+  function appendChatRows(rows){
+    const log = $('log');
+    const me = myName();
+    // 새 메시지가 오기 전, 사용자가 최신 대화 근처를 보고 있었는지 먼저 기록
+    const shouldFollowLatest = isChatNearBottom_(log);
+    let appended = false;
+    let addedCount = 0;
+
+    rows.forEach(r=>{
+      const ts = r[0], user = r[1], msg = r[2], idRaw = r[3];
+      const id = String(idRaw || '');
+
+      if (id && seenIds.has(id)) return;
+      if (id) seenIds.add(id);
+
+      const isSys = (user === 'SYSTEM');
+      const isMine = (!isSys && me && user === me);
+
+      const row = document.createElement('div');
+      row.className = `row ${isSys ? 'system' : (isMine ? 'mine' : 'theirs')}`;
+      row.innerHTML = `
+        <div class="metaLine">${escapeHtml(ts)} · ${escapeHtml(isSys ? '시스템' : user)}</div>
+        <div class="bubble">${escapeHtml(msg)}</div>
+      `;
+      log.appendChild(row);
+      appended = true;
+      addedCount += 1;
+    });
+
+    if (!appended) return false;
+
+    // 최신 대화를 보고 있었다면 기존처럼 자연스럽게 따라감.
+    // 과거 대화를 읽는 중이었다면 위치를 유지하고, 버튼으로만 알려줌.
+    if (shouldFollowLatest) {
+      scrollChatToLatest_();
+    } else {
+      unreadChatCount += addedCount;
+      updateNewMessagesButton_();
+    }
+
+    return true;
+  }
+
+  // =====================
+  // 명령어 판별
+  // =====================
+  function isCommandMsg_(text){
+    const s = String(text || '').trim();
+    if (!s) return false;
+
+    // ✅ 작품 슬롯 프리픽스: '/1 ...', '닉네임: /2 ...'
+    if (/^\s*\/\d{1,2}\b/.test(s)) return true;
+    if (/^[^\d:+\-]{1,20}\s*:\s*\/\d{1,2}\b/.test(s)) return true;
+    if (/^[^\d:+\-]{1,20}\s+\/\d{1,2}\b/.test(s)) return true;
+
+    // ✅ 시작(기준 스냅샷): '시작1234', '시작 1234', '리로 시작 1234', '리로:시작 1234'
+    if (/^\s*(?:\/)?\s*(시작|start)\s*\d+/i.test(s)) return true;
+    if (/^[^\d:+\-]{1,20}\s*:\s*(?:\/)?\s*(시작|start)\s*\d+/i.test(s)) return true;
+    if (/^[^\d:+\-]{1,20}\s+(?:\/)?\s*(시작|start)\s*\d+/i.test(s)) return true;
+
+    // 숫자만 → 스냅샷(현재 글자수)
+    if (/^\d{1,12}$/.test(s)) return true;
+    // 이름+숫자 (예: 리로12000)도 스냅샷
+    if (/^[^\d:+\-]{1,20}\d{1,12}$/.test(s)) return true;
+    // 델타 (예: +300, -200) / 이름:+300
+    if (/^[+\-]\d{1,12}$/.test(s)) return true;
+    if (/^[^\d:+\-]{1,20}\s*:\s*[+\-]\d{1,12}$/.test(s)) return true;
+
+    // 기타 키워드 명령
+    // 작업 모드(기록X, 시스템 메시지O)
+    if (/^\s*\/?\s*(집필|시놉|시놉시스|트릿|트리트|treatment|수정|퇴고|자료조사|리서치|인풋|input)(\s|$)/i.test(s)) return true;
+
+    if (/^\s*\/?\s*(새편|새\s*편|new|episode)(\s|$)/i.test(s)) return true;
+    if (/^\s*\/?\s*(기준|기준조회|기준확인|오늘기준|baseline)(\s|$)/i.test(s)) return true;
+    if (/^\s*\/?\s*(오늘초기화|초기화|오늘리셋|기록초기화|reset|중복정리|중복\s*정리)(\s|$)/i.test(s)) return true;
+
+    return false;
+  }
+
+  // =====================
+  // 서버 명령 처리 큐 (BUSY면 자동 재시도)
+  // =====================
+  function runProcessCommandOnly_(sid, user, msg){
+    return new Promise((resolve, reject) => {
+      google.script.run
+        .withSuccessHandler(resolve)
+        .withFailureHandler(reject)
+        .processCommandOnly(sid, user, msg);
+    });
+  }
+
+  function enqueueCommand_(sid, user, msg){
+    cmdQueue_.push({ sid, user, msg, tries: 0, notified: false, backoff: 1200 });
+    if (!cmdWorking_) processCmdQueue_();
+  }
+
+  async function processCmdQueue_(){
+    if (cmdWorking_) return;
+    cmdWorking_ = true;
+
+    while (cmdQueue_.length){
+      const job = cmdQueue_[0];
+      if (!job.sid) { cmdQueue_.shift(); continue; }
+
+      try{
+        const res = await runProcessCommandOnly_(job.sid, job.user, job.msg);
+
+        if (res && res.ok === false && res.reason === 'SESSION_CHANGED') {
+          handleSessionEnded();
+          cmdQueue_.shift();
+          continue;
+        }
+
+        if (res && res.busy) {
+          job.tries += 1;
+          if (!job.notified){
+            job.notified = true;
+            try{ await fbSend_('SYSTEM', '⏳ 서버가 잠깐 바빠요. 처리 대기 중… (자동 재시도)', 'system'); }catch(e){}
+          }
+          job.backoff = Math.min(12000, Math.floor(job.backoff * 1.35) + 200);
+          const jitter = Math.floor(Math.random() * 300);
+          await new Promise(r => setTimeout(r, job.backoff + jitter));
+          continue;
+        }
+
+        if (res && res.hadCommand && res.sysText) {
+          try{ await fbSend_('SYSTEM', res.sysText, 'system'); }catch(e){}
+        }
+
+        cmdQueue_.shift();
+
+      } catch(e){
+        job.tries += 1;
+        if (!job.notified){
+          job.notified = true;
+          try{ await fbSend_('SYSTEM', '📡 서버 연결이 잠깐 불안정해요. 처리 대기 중…', 'system'); }catch(_e){}
+        }
+        if (job.tries >= 8){
+          try{ await fbSend_('SYSTEM', '⚠️ 서버 처리 실패(권한/네트워크). 잠시 후 다시 입력해줘!', 'system'); }catch(_e){}
+          cmdQueue_.shift();
+        } else {
+          job.backoff = Math.min(15000, Math.floor(job.backoff * 1.5) + 400);
+          const jitter = Math.floor(Math.random() * 400);
+          await new Promise(r => setTimeout(r, job.backoff + jitter));
+        }
+      }
+    }
+
+    cmdWorking_ = false;
+  }
+
+  // =====================
+  // 뽀모 상태 수신/렌더
+  // =====================
+  function onPomState(res){
+    if (!res) return;
+    if (res.ok === false && res.reason === 'SESSION_CHANGED') { handleSessionEnded(); return; }
+
+    const seq = Number(res.seq || 0);
+    const phase = res.phase || 'work';
+
+    // phase 변경 알림
+    if ((seq !== lastPomSeq && lastPomSeq !== 0) || (lastPhase !== null && phase !== lastPhase)) playPhaseSound(phase);
+    lastPomSeq = seq;
+    lastPhase = phase;
+
+    pom = res;
+
+    const serverRemain = Number(res.remaining ?? res.phaseSeconds ?? localRemaining);
+
+    if (!res.isRunning) {
+      stopAudioKeepAlive_();
+      anchorRemainSec = null;
+      anchorAtMs = null;
+      lastRenderSec = null;
+
+      localRemaining = serverRemain;
+      $('time').textContent = fmt(localRemaining);
+    } else {
+      const needReset =
+        (anchorRemainSec == null || anchorAtMs == null) ||
+        (seq !== lastAnchorSeq) ||
+        (Math.abs(serverRemain - localRemaining) >= 2);
+
+      if (needReset) {
+        anchorRemainSec = serverRemain;
+        anchorAtMs = Date.now();
+        lastRenderSec = null;
+        lastAnchorSeq = seq;
+      }
+      tick();
+    }
+
+    const ph = $('phase');
+    ph.textContent = (phase === 'work') ? '🔥작업 중🔥' : '🧋휴식 중';
+    ph.dataset.mode = (phase === 'work') ? 'work' : 'rest';
+  }
+
+  function tick(){
+    if (isStopped) return;
+    if (!pom) return;
+
+    if (!pom.isRunning) {
+      $('time').textContent = fmt(localRemaining);
+      return;
+    }
+
+    if (anchorRemainSec == null || anchorAtMs == null) return;
+
+    const elapsed = Math.floor((Date.now() - anchorAtMs) / 1000);
+    const remain = Math.max(0, anchorRemainSec - elapsed);
+
+    if (remain !== lastRenderSec) {
+      lastRenderSec = remain;
+      localRemaining = remain;
+      $('time').textContent = fmt(remain);
+    }
+
+    // 0초 근처에서는 호스트만 서버에 동기화
+    if (remain === 0 && iAmHost) syncPom();
+  }
+
+  function syncPom(){
+    if (isStopped || !sessionId) return;
+    if (!iAmHost) return; // 폭주 방지
+    google.script.run
+      .withSuccessHandler(res => { if (res) onPomState(res); })
+      .withFailureHandler(()=>{})
+      .getPomodoroState(sessionId);
+  }
+
+  // =====================
+  // joinOrPing 스케줄러 (중복 호출 제거)
+  // =====================
+  let pingTimer = null;
+  let pingBackoff = 0;
+
+  function nextPingMs_(){
+    if (document.hidden) return (iAmHost ? 7000 : 20000);
+    return (iAmHost ? 3500 : 12000);
+  }
+
+  function schedulePing_(){
+    if (pingTimer) clearTimeout(pingTimer);
+    pingTimer = setTimeout(()=>{ joinOrPing_(); }, Math.min(30000, Math.max(1500, nextPingMs_() + pingBackoff)));
+  }
+
+  function joinOrPing_(){
+    if (isStopped) return;
+
+    google.script.run
+      .withSuccessHandler(async (res) => {
+        if (!res) { schedulePing_(); return; }
+        if (res.ok === false && res.reason === 'SESSION_CHANGED') { handleSessionEnded(); return; }
+
+        if (!sessionId && res.sessionId) {
+          sessionId = res.sessionId;
+        } else if (sessionId && res.sessionId && res.sessionId !== sessionId) {
+          // ✅ 자정 등으로 세션이 변경됨 → 새로고침으로 안전하게 재연결
+          stopAll();
+          showOverlay('세션이 갱신됐어요', '세션이 새로 열렸어요. 잠시 후 자동으로 재연결할게요.');
+          setTimeout(()=>{ try{ location.reload(); } catch(e){} }, 1800);
+          return;
+        }
+
+        // ✅ 세션이 바뀐 경우
+
+        // 서버 정보 반영
+        hostName = res.hostName || hostName;
+        iAmHost = !!res.iAmHost;
+
+        // 뽀모 상태 반영
+        if (res.pom) onPomState({ ok:true, ...res.pom });
+
+        // Firebase 채팅/프레즌스 시작
+        if (sessionId){
+          initFirebaseChat_(sessionId);
+          await startPresence_();
+          // ✅ 공지 구독(접속 시 자동 팝업)
+          initNotice_(sessionId);
+      initGuide_(sessionId);
+          // 상단 접속자 숫자는 가끔만 갱신
+          if (!document.hidden && Math.random() < 0.35){
+            const r = await refreshPresenceList_();
+            activeCount = r.count;
+            activeNames = r.names;
+          }
+        }
+
+        renderTop();
+
+        // backoff 조정
+        pingBackoff = res.busy ? Math.min(15000, pingBackoff + 1200) : Math.max(0, pingBackoff - 900);
+        schedulePing_();
+      })
+      .withFailureHandler(() => {
+        pingBackoff = Math.min(15000, pingBackoff + 1800);
+        schedulePing_();
+      })
+      .joinOrPing(CLIENT_ID, myName());
+  }
+
+  // =====================
+  // UI actions
+  // =====================
+  function stopAll(){
+    isStopped = true;
+    stopAudioKeepAlive_();
+    stopCustomSound_();
+  }
+  function handleSessionEnded(){
+    stopAll();
+    showOverlay('세션 종료', '세션이 닫혔어요. 창을 닫거나 새로고침하면 새 세션으로 시작돼요.');
+  }
+
+  async function send(){
+    if (isStopped) return;
+    if (!sessionId) return;
+    if (sending) return;
+    sending = true;
+
+    markUserGesture();
+
+    const user = myName();
+    const msgEl = $('msg');
+    const rawMsg = msgEl.value.trim();
+    const slotApplied = applyActiveSlotToMsg_(rawMsg);
+    const msg = slotApplied.msg;
+    if (!msg) { sending = false; return; }
+
+    const btn = $('sendBtn');
+    btn.disabled = true;
+    msgEl.value = '';
+
+    (async () => {
+      try{
+        const isCmd = isCommandMsg_(msg);
+        await fbSend_(user, msg, isCmd ? 'cmd' : 'chat');
+        if (isCmd) enqueueCommand_(sessionId, user, msg);
+      } catch(e) {
+        alert('전송 실패! 네트워크/권한을 확인해주세요.');
+      } finally {
+        btn.disabled = false;
+        sending = false;
+      }
+    })();
+  }
+
+  // =====================
+  // Audio
+  // =====================
+  async function ensureAudio_(){
+    try{
+      const AudioCtx = window.AudioContext || window.webkitAudioContext;
+      if (!AudioCtx) return;
+      if (!audioCtx) audioCtx = new AudioCtx();
+      if (audioCtx.state === 'suspended') await audioCtx.resume();
+    }catch(e){}
+  }
+
+  function startAudioKeepAlive_(){
+    if (!soundEnabled) return;
+    if (!userGestured) return;
+    if (keepAliveOn) return;
+    try{
+      ensureAudio_();
+      const AudioCtx = window.AudioContext || window.webkitAudioContext;
+      if (!AudioCtx) return;
+      if (!audioCtx) audioCtx = new AudioCtx();
+      keepAliveOsc = audioCtx.createOscillator();
+      keepAliveGain = audioCtx.createGain();
+      keepAliveOsc.type = 'sine';
+      keepAliveOsc.frequency.value = 440;
+      keepAliveGain.gain.value = 0.00001;
+      keepAliveOsc.connect(keepAliveGain);
+      keepAliveGain.connect(audioCtx.destination);
+      keepAliveOsc.start();
+      keepAliveOn = true;
+    }catch(e){
+      keepAliveOn = false;
+    }
+  }
+
+  function stopAudioKeepAlive_(){
+    try{
+      if (keepAliveOsc){
+        keepAliveOsc.stop();
+        keepAliveOsc.disconnect();
+      }
+    }catch(e){}
+    try{
+      if (keepAliveGain) keepAliveGain.disconnect();
+    }catch(e){}
+    keepAliveOsc = null;
+    keepAliveGain = null;
+    keepAliveOn = false;
+  }
+
+  // =====================
+  // Personal MP3 notification sounds (local IndexedDB only)
+  // =====================
+  function normalizeSoundPhase_(phase){
+    return phase === 'break' ? 'break' : 'work';
+  }
+
+  function soundPhaseLabel_(phase){
+    return normalizeSoundPhase_(phase) === 'break' ? '휴식 시작' : '작업 시작';
+  }
+
+  function soundUiIds_(phase){
+    return normalizeSoundPhase_(phase) === 'break'
+      ? { status: 'breakSoundFileStatus', preview: 'btnBreakSoundPreview', reset: 'btnBreakSoundFileReset' }
+      : { status: 'workSoundFileStatus', preview: 'btnWorkSoundPreview', reset: 'btnWorkSoundFileReset' };
+  }
+
+  function getCustomSoundSlot_(phase){
+    return customSounds[normalizeSoundPhase_(phase)];
+  }
+
+  function hasCustomSound_(phase){
+    const slot = getCustomSoundSlot_(phase);
+    return !!(slot && slot.blob && slot.url);
+  }
+
+  function hasAnyCustomSound_(){
+    return SOUND_PHASES.some((phase) => hasCustomSound_(phase));
+  }
+
+  function shortSoundName_(name){
+    const s = String(name || '').trim();
+    if (!s) return '';
+    return s.length > 22 ? `${s.slice(0, 19)}…` : s;
+  }
+
+  function updateCustomSoundUI_(phase){
+    const phases = phase ? [normalizeSoundPhase_(phase)] : SOUND_PHASES;
+    for (const currentPhase of phases){
+      const ids = soundUiIds_(currentPhase);
+      const status = $(ids.status);
+      const previewBtn = $(ids.preview);
+      const resetBtn = $(ids.reset);
+      const has = hasCustomSound_(currentPhase);
+      const slot = getCustomSoundSlot_(currentPhase);
+
+      if (status){
+        const label = has ? shortSoundName_(slot.name || '내 MP3') : '기본 알림음';
+        status.textContent = label;
+        status.title = has
+          ? `${slot.name || '내 MP3'} (현재 브라우저에만 저장됨)`
+          : (customSoundStorageAvailable ? '기본 알림음 사용 중' : '브라우저 저장소를 사용할 수 없음');
+      }
+      if (previewBtn) previewBtn.disabled = !has;
+      if (resetBtn) resetBtn.disabled = !has;
+    }
+  }
+
+  function openCustomSoundDb_(){
+    return new Promise((resolve, reject) => {
+      if (!('indexedDB' in window)) {
+        reject(new Error('이 브라우저는 로컬 파일 저장을 지원하지 않아요.'));
+        return;
+      }
+      let req;
+      try { req = window.indexedDB.open(CUSTOM_SOUND_DB_NAME, 1); }
+      catch (e) { reject(e); return; }
+
+      req.onupgradeneeded = () => {
+        const db = req.result;
+        if (!db.objectStoreNames.contains(CUSTOM_SOUND_STORE)) {
+          db.createObjectStore(CUSTOM_SOUND_STORE);
+        }
+      };
+      req.onsuccess = () => resolve(req.result);
+      req.onerror = () => reject(req.error || new Error('브라우저 저장소를 열 수 없어요.'));
+    });
+  }
+
+  async function customSoundDbGet_(key){
+    const db = await openCustomSoundDb_();
+    return new Promise((resolve, reject) => {
+      let tx;
+      try {
+        tx = db.transaction(CUSTOM_SOUND_STORE, 'readonly');
+        const req = tx.objectStore(CUSTOM_SOUND_STORE).get(key);
+        req.onsuccess = () => resolve(req.result || null);
+        req.onerror = () => reject(req.error || new Error('저장된 알림음을 읽을 수 없어요.'));
+        tx.oncomplete = () => { try{ db.close(); }catch(e){} };
+      } catch (e) {
+        try{ db.close(); }catch(_e){}
+        reject(e);
+      }
+    });
+  }
+
+  async function customSoundDbPut_(key, record){
+    const db = await openCustomSoundDb_();
+    return new Promise((resolve, reject) => {
+      let tx;
+      try {
+        tx = db.transaction(CUSTOM_SOUND_STORE, 'readwrite');
+        tx.objectStore(CUSTOM_SOUND_STORE).put(record, key);
+        tx.oncomplete = () => { try{ db.close(); }catch(e){} resolve(); };
+        tx.onerror = () => { try{ db.close(); }catch(e){} reject(tx.error || new Error('알림음을 저장할 수 없어요.')); };
+        tx.onabort = () => { try{ db.close(); }catch(e){} reject(tx.error || new Error('알림음 저장이 취소됐어요.')); };
+      } catch (e) {
+        try{ db.close(); }catch(_e){}
+        reject(e);
+      }
+    });
+  }
+
+  async function customSoundDbDelete_(key){
+    const db = await openCustomSoundDb_();
+    return new Promise((resolve, reject) => {
+      let tx;
+      try {
+        tx = db.transaction(CUSTOM_SOUND_STORE, 'readwrite');
+        tx.objectStore(CUSTOM_SOUND_STORE).delete(key);
+        tx.oncomplete = () => { try{ db.close(); }catch(e){} resolve(); };
+        tx.onerror = () => { try{ db.close(); }catch(e){} reject(tx.error || new Error('알림음을 지울 수 없어요.')); };
+        tx.onabort = () => { try{ db.close(); }catch(e){} reject(tx.error || new Error('알림음 삭제가 취소됐어요.')); };
+      } catch (e) {
+        try{ db.close(); }catch(_e){}
+        reject(e);
+      }
+    });
+  }
+
+  function clearCustomSoundRuntime_(phase){
+    const normalized = normalizeSoundPhase_(phase);
+    const slot = getCustomSoundSlot_(normalized);
+    stopCustomSound_(normalized);
+    try{ if (slot.source) slot.source.disconnect(); }catch(e){}
+    try{ if (slot.gain) slot.gain.disconnect(); }catch(e){}
+    slot.source = null;
+    slot.gain = null;
+
+    try{
+      if (slot.audio){
+        slot.audio.pause();
+        slot.audio.removeAttribute('src');
+        slot.audio.load();
+      }
+    }catch(e){}
+    slot.audio = null;
+
+    if (slot.url){
+      try{ URL.revokeObjectURL(slot.url); }catch(e){}
+    }
+    slot.url = '';
+    slot.blob = null;
+    slot.name = '';
+  }
+
+  function applyCustomSoundRecord_(phase, record){
+    if (!record || !(record.blob instanceof Blob)) return false;
+    const normalized = normalizeSoundPhase_(phase);
+    const slot = getCustomSoundSlot_(normalized);
+    clearCustomSoundRuntime_(normalized);
+    slot.blob = record.blob;
+    slot.name = String(record.name || `${soundPhaseLabel_(normalized)} 알림음.mp3`).trim() || `${soundPhaseLabel_(normalized)} 알림음.mp3`;
+    slot.url = URL.createObjectURL(slot.blob);
+    updateCustomSoundUI_(normalized);
+    return true;
+  }
+
+  function getCustomSoundAudio_(phase){
+    const normalized = normalizeSoundPhase_(phase);
+    if (!hasCustomSound_(normalized)) return null;
+    const slot = getCustomSoundSlot_(normalized);
+    if (!slot.audio){
+      const audio = new Audio();
+      audio.preload = 'auto';
+      audio.playsInline = true;
+      audio.loop = false;
+      audio.src = slot.url;
+      audio.addEventListener('ended', () => {
+        if (slot.stopTimer){
+          clearTimeout(slot.stopTimer);
+          slot.stopTimer = null;
+        }
+      });
+      slot.audio = audio;
+    }
+    return slot.audio;
+  }
+
+  function connectCustomSoundGraph_(phase){
+    const normalized = normalizeSoundPhase_(phase);
+    const slot = getCustomSoundSlot_(normalized);
+    const audio = getCustomSoundAudio_(normalized);
+    if (!audio || !audioCtx || slot.source) return;
+    try{
+      slot.source = audioCtx.createMediaElementSource(audio);
+      slot.gain = audioCtx.createGain();
+      slot.source.connect(slot.gain);
+      slot.gain.connect(audioCtx.destination);
+      applyCustomSoundVolume_(normalized);
+    }catch(e){
+      // 일부 환경에서는 MediaElementAudioSource 연결이 제한될 수 있어 audio.volume 방식으로 그대로 재생
+      slot.source = null;
+      slot.gain = null;
+    }
+  }
+
+  function applyCustomSoundVolume_(phase){
+    const phases = phase ? [normalizeSoundPhase_(phase)] : SOUND_PHASES;
+    const mult = Math.max(0.05, Math.min(8.0, Number(soundMult) || 1.5));
+    for (const currentPhase of phases){
+      const slot = getCustomSoundSlot_(currentPhase);
+      if (slot.gain){
+        try{ slot.gain.gain.value = mult; }catch(e){}
+      } else if (slot.audio){
+        // AudioContext 연결을 지원하지 않는 환경에서는 브라우저 최대치(100%)까지 적용
+        try{ slot.audio.volume = Math.max(0, Math.min(1, mult)); }catch(e){}
+      }
+    }
+  }
+
+  async function primeOneCustomSound_(phase){
+    const normalized = normalizeSoundPhase_(phase);
+    if (!hasCustomSound_(normalized) || !userGestured) return false;
+    const audio = getCustomSoundAudio_(normalized);
+    if (!audio) return false;
+    try{
+      await ensureAudio_();
+      connectCustomSoundGraph_(normalized);
+      const prevMuted = audio.muted;
+      audio.muted = true;
+      audio.currentTime = 0;
+      await audio.play();
+      audio.pause();
+      audio.currentTime = 0;
+      audio.muted = prevMuted;
+      applyCustomSoundVolume_(normalized);
+      return true;
+    }catch(e){
+      try{ audio.pause(); audio.currentTime = 0; audio.muted = false; }catch(_e){}
+      return false;
+    }
+  }
+
+  async function primeCustomSound_(phase){
+    if (phase) return primeOneCustomSound_(phase);
+    const results = await Promise.all(SOUND_PHASES.map((currentPhase) => primeOneCustomSound_(currentPhase)));
+    return results.some(Boolean);
+  }
+
+  function stopCustomSound_(phase){
+    const phases = phase ? [normalizeSoundPhase_(phase)] : SOUND_PHASES;
+    for (const currentPhase of phases){
+      const slot = getCustomSoundSlot_(currentPhase);
+      if (slot.stopTimer){
+        clearTimeout(slot.stopTimer);
+        slot.stopTimer = null;
+      }
+      try{
+        if (slot.audio){
+          slot.audio.pause();
+          slot.audio.currentTime = 0;
+        }
+      }catch(e){}
+    }
+  }
+
+  async function playCustomSound_(phase, maxPlayMs = CUSTOM_SOUND_MAX_PLAY_MS){
+    const normalized = normalizeSoundPhase_(phase);
+    if (!soundEnabled || !userGestured || !hasCustomSound_(normalized)) return false;
+    const slot = getCustomSoundSlot_(normalized);
+    const audio = getCustomSoundAudio_(normalized);
+    if (!audio) return false;
+
+    try{
+      await ensureAudio_();
+      connectCustomSoundGraph_(normalized);
+      applyCustomSoundVolume_(normalized);
+      // 미리 듣기/이전 알림과 겹치지 않게 현재 브라우저의 다른 알림음도 함께 정지
+      stopCustomSound_();
+      audio.currentTime = 0;
+      await audio.play();
+      slot.stopTimer = setTimeout(
+        () => stopCustomSound_(normalized),
+        Math.max(1000, Number(maxPlayMs) || CUSTOM_SOUND_MAX_PLAY_MS)
+      );
+      return true;
+    }catch(e){
+      try{ audio.pause(); audio.currentTime = 0; }catch(_e){}
+      return false;
+    }
+  }
+
+  async function loadCustomSoundsFromBrowser_(){
+    updateCustomSoundUI_();
+    try{
+      let [workRecord, breakRecord, legacyRecord] = await Promise.all([
+        customSoundDbGet_(CUSTOM_SOUND_KEYS.work),
+        customSoundDbGet_(CUSTOM_SOUND_KEYS.break),
+        customSoundDbGet_(CUSTOM_SOUND_KEYS.legacy)
+      ]);
+
+      // 이전 버전의 단일 MP3는 작업/휴식 두 칸에 복사해 기존 설정을 잃지 않게 처리합니다.
+      if (legacyRecord && legacyRecord.blob instanceof Blob){
+        const migrationJobs = [];
+        if (!workRecord){
+          workRecord = legacyRecord;
+          migrationJobs.push(customSoundDbPut_(CUSTOM_SOUND_KEYS.work, legacyRecord));
+        }
+        if (!breakRecord){
+          breakRecord = legacyRecord;
+          migrationJobs.push(customSoundDbPut_(CUSTOM_SOUND_KEYS.break, legacyRecord));
+        }
+        if (migrationJobs.length){
+          try{
+            await Promise.all(migrationJobs);
+            // 두 새 칸 모두 준비됐을 때만 예전 키를 정리
+            if (workRecord && breakRecord) await customSoundDbDelete_(CUSTOM_SOUND_KEYS.legacy);
+          }catch(e){
+            // 복사에 실패해도 이번 실행에서는 기존 소리를 그대로 쓸 수 있게 둡니다.
+          }
+        }
+      }
+
+      if (!customSoundUserChanged.work && workRecord && workRecord.blob instanceof Blob){
+        applyCustomSoundRecord_('work', workRecord);
+      }
+      if (!customSoundUserChanged.break && breakRecord && breakRecord.blob instanceof Blob){
+        applyCustomSoundRecord_('break', breakRecord);
+      }
+      customSoundStorageAvailable = true;
+    }catch(e){
+      customSoundStorageAvailable = false;
+    }
+    updateCustomSoundUI_();
+  }
+
+  function isAcceptedMp3_(file){
+    const nameOk = /\.mp3$/i.test(String(file && file.name || ''));
+    const type = String(file && file.type || '').toLowerCase();
+    const typeOk = ['audio/mpeg', 'audio/mp3', 'audio/x-mpeg'].includes(type);
+    return nameOk || typeOk;
+  }
+
+  function playDefaultPhaseSound_(phase){
+    const base = (phase === 'work') ? 880 : 660;
+    const seq = [
+      [base, 70, 0.16],
+      [base, 70, 0.16],
+      [base, 70, 0.16],
+      [base, 70, 0.16],
+      [base + 220, 150, 0.18],
+    ];
+    let i = 0;
+    const playNext = () => {
+      if (i >= seq.length) return;
+      const [f, ms, v] = seq[i++];
+      beep(f, ms, v);
+      setTimeout(playNext, ms + 40);
+    };
+    playNext();
+  }
+
+  function beep(freq=880, ms=120, vol=0.15){
+    if (!soundEnabled) return;
+    if (!userGestured) return;
+
+    // 🔊 사용자가 조절한 볼륨 배수 적용
+    const _v = Math.max(0.05, Math.min(8.0, Number(soundMult) || 1.5));
+    vol = Math.max(0.0001, Math.min(1, vol * _v));
+
+    try{
+      const AudioCtx = window.AudioContext || window.webkitAudioContext;
+      if (!AudioCtx) return;
+
+      if (!audioCtx) audioCtx = new AudioCtx();
+      if (audioCtx.state === 'suspended') audioCtx.resume().catch(()=>{});
+
+      const o = audioCtx.createOscillator();
+      const g = audioCtx.createGain();
+      o.type = 'sine';
+      o.frequency.value = freq;
+      o.connect(g);
+      g.connect(audioCtx.destination);
+
+      const t0 = audioCtx.currentTime;
+      g.gain.setValueAtTime(0.0001, t0);
+      g.gain.exponentialRampToValueAtTime(Math.max(0.0001, vol), t0 + 0.01);
+      g.gain.exponentialRampToValueAtTime(0.0001, t0 + ms/1000);
+
+      o.start(t0);
+      o.stop(t0 + ms/1000 + 0.02);
+    }catch(e){}
+  }
+
+  function playPhaseSound(phase){
+    const soundPhase = normalizeSoundPhase_(phase);
+    userGestured = true;
+    startAudioKeepAlive_();
+    ensureAudio_();
+
+    // 작업 시작과 휴식 시작은 각자 저장한 MP3를 우선 재생합니다.
+    // 파일이 없거나 브라우저가 재생을 막으면 기존 비프음으로 안전하게 복귀합니다.
+    if (hasCustomSound_(soundPhase)) {
+      playCustomSound_(soundPhase).then((played) => {
+        if (!played) playDefaultPhaseSound_(soundPhase);
+      }).catch(() => {
+        playDefaultPhaseSound_(soundPhase);
+      });
+      return;
+    }
+
+    playDefaultPhaseSound_(soundPhase);
+  }
+
+  function playClickSound(kind){
+    if (!soundEnabled) return;
+    userGestured = true;
+
+    if (kind === 'start') {
+      beep(1046, 55, 0.13);
+      setTimeout(()=>beep(1318, 65, 0.13), 85);
+    } else if (kind === 'stop') {
+      beep(659, 55, 0.13);
+      setTimeout(()=>beep(523, 65, 0.13), 85);
+    } else {
+      beep(880, 55, 0.11);
+      setTimeout(()=>beep(1100, 60, 0.11), 85);
+    }
+  }
+
+  // =====================
+  // Guide / UI extras
+  // =====================
+  function openGuide(){
+    // ✅ 가이드는 Firebase에 저장/수정 가능 (인덱스 수정 불필요)
+    window.guideOpen(false);
+  }
+
+  // =====================
+  // Log sizer
+  // =====================
+  function initLogSizer(){
+    const logEl = $('log');
+    const slider = $('logSize');
+    const valEl = $('logSizeVal');
+
+    // ✅ 슬라이더(min/max/value) 기준으로 마지막 높이 복원 (메뉴 UI 변경에도 안전)
+    const minH = Number(slider?.min || 180);
+    const maxH = Number(slider?.max || 1000);
+    const fallbackH = Number(slider?.value || 260) || 260;
+
+    const saved = Number(localStorage.getItem('VENT_LOG_H') || fallbackH);
+    const initH = (saved >= minH && saved <= maxH) ? saved : fallbackH;
+
+    logEl.style.height = initH + 'px';
+    slider.value = String(initH);
+    valEl.textContent = initH + 'px';
+
+    slider.addEventListener('input', () => {
+      markUserGesture();
+      const h = Number(slider.value);
+      logEl.style.height = h + 'px';
+      valEl.textContent = h + 'px';
+      localStorage.setItem('VENT_LOG_H', String(h));
+      logEl.scrollTop = logEl.scrollHeight;
+    });
+  }
+
+  // =====================
+  // Sound volume slider
+  // =====================
+  {
+    const volSlider = $('soundVol');
+    const volValEl = $('soundVolVal');
+
+    const savedVol = Number(localStorage.getItem('VENT_SOUND_MULT') || 150);
+    const initVol = (savedVol >= 50 && savedVol <= 800) ? savedVol : 150;
+
+    soundMult = initVol / 100; // 0.5x ~ 8.0x
+    volSlider.value = String(initVol);
+    volValEl.textContent = initVol + '%';
+
+    volSlider.addEventListener('input', () => {
+      markUserGesture();
+      const v = Number(volSlider.value);
+      soundMult = v / 100;
+      volValEl.textContent = v + '%';
+      localStorage.setItem('VENT_SOUND_MULT', String(v));
+      applyCustomSoundVolume_();
+    });
+  }
+
+
+  // =====================
+  // Button wire-up
+  // =====================
+  $('sendBtn').addEventListener('click', send);
+  // 🚩 시작 스냅샷(기준) 버튼
+  $('btnStartSnap').addEventListener('click', () => {
+    const raw = prompt('🚩 시작 스냅샷(현재 글자수)을 입력해줘.\n예: 1234');
+    if (raw === null) return;
+    const num = String(raw || '').replace(/,/g, '').trim();
+    if (!/^\d+$/.test(num)) {
+      alert('숫자만 입력해줘!');
+      return;
+    }
+    $('msg').value = `시작 ${num}`;
+    send();
+  });
+
+  // 🧹 오늘 기록 초기화 버튼
+  $('btnResetToday').addEventListener('click', () => {
+    const ok = confirm('🧹 오늘 기록을 0으로 초기화할까요?\n(닉네임 기준으로 오늘만 초기화돼요)');
+    if (!ok) return;
+    $('msg').value = '초기화';
+    send();
+  });
+
+  // 🆕 새편 시작(0자부터) 버튼
+  $('btnNewEpisode').addEventListener('click', () => {
+    const ok = confirm('🆕 새편을 시작할까요?\n(새 회차를 0자부터 카운팅해요)');
+    if (!ok) return;
+    $('msg').value = '새편';
+    send();
+  });
+
+  // ✅ Mac 한글 입력 중 마지막 글자 중복/첫 Enter 줄바꿈 방지
+  // - 조합 중 Enter는 IME 확정에 맡김
+  // - 조합 직후 Enter는 줄바꿈을 막고, 최종 글자가 textarea에 반영된 다음 전송
+  const msgInputEl = $('msg');
+  msgInputEl.addEventListener('compositionstart', () => {
+    chatImeComposing = true;
+  });
+  msgInputEl.addEventListener('compositionend', () => {
+    chatImeComposing = false;
+    chatCompositionEndedAt = Date.now();
+  });
+  msgInputEl.addEventListener('keydown', (e)=>{
+    if (e.key !== 'Enter' || e.shiftKey) return;
+
+    if (e.isComposing || chatImeComposing || e.keyCode === 229) {
+      return;
+    }
+
+    e.preventDefault();
+
+    const justEndedComposition = Date.now() - chatCompositionEndedAt < 120;
+    if (justEndedComposition) {
+      setTimeout(() => send(), 0);
+      return;
+    }
+
+    send();
+  });
+
+  $('btnStart').addEventListener('click', ()=>{
+    markUserGesture();
+    playClickSound('start');
+    if (!sessionId) return;
+    google.script.run.withSuccessHandler(onPomState).startPomodoro(sessionId, CLIENT_ID);
+  });
+
+  $('btnPause').addEventListener('click', ()=>{
+    markUserGesture();
+    playClickSound('stop');
+    if (!sessionId) return;
+    google.script.run.withSuccessHandler(onPomState).pausePomodoro(sessionId, CLIENT_ID);
+  });
+
+  $('btnReset').addEventListener('click', ()=>{
+    markUserGesture();
+    if (!sessionId) return;
+    google.script.run.withSuccessHandler(onPomState).resetPomodoro(sessionId, CLIENT_ID);
+  });
+
+  $('btnClaim').addEventListener('click', ()=>{
+    markUserGesture();
+    if (!sessionId) return;
+    google.script.run.withSuccessHandler(res=>{
+      if (!res) return;
+      if (res.ok) {
+        iAmHost = true;
+        hostName = res.hostName || hostName;
+        renderTop();
+        return;
+      }
+      // ✅ 작업 중이어도 호스트 변경 가능 (서버 RUNNING 제한 제거됨)
+      if (res.reason === 'GRACE') { alert(`${res.waitSec}초 후 가능!`); return; }
+      const cur = res.hostName ? ` (현재 호스트: ${res.hostName})` : '';
+      alert('호스트 가져오기 실패' + cur);
+    }).claimHost(sessionId, CLIENT_ID, myName());
+  });
+
+  function chooseCustomSoundFile_(phase){
+    soundPickerTarget = normalizeSoundPhase_(phase);
+    const input = $('soundFileInput');
+    if (input) input.click();
+  }
+
+  async function previewCustomSound_(phase){
+    const normalized = normalizeSoundPhase_(phase);
+    if (!hasCustomSound_(normalized)) return;
+    if (!soundEnabled) {
+      showOverlay('알림이 꺼져 있어요', '먼저 “🔊 알림” 버튼으로 알림음을 켠 뒤 미리 들어볼 수 있어!');
+      return;
+    }
+    const played = await playCustomSound_(normalized, 12 * 1000);
+    if (!played) {
+      showOverlay('미리 듣기를 시작하지 못했어', '브라우저가 소리 재생을 막은 것 같아. 페이지 아무 곳이나 한 번 클릭한 뒤 다시 눌러줘!');
+    }
+  }
+
+  async function resetCustomSound_(phase){
+    const normalized = normalizeSoundPhase_(phase);
+    if (!hasCustomSound_(normalized)) return;
+    const label = soundPhaseLabel_(normalized);
+    if (!confirm(`${label} MP3 알림음을 지우고 기본 알림음으로 되돌릴까?`)) return;
+    customSoundUserChanged[normalized] = true;
+
+    try{
+      await customSoundDbDelete_(CUSTOM_SOUND_KEYS[normalized]);
+      customSoundStorageAvailable = true;
+      clearCustomSoundRuntime_(normalized);
+      updateCustomSoundUI_(normalized);
+    }catch(err){
+      showOverlay('기본음으로 바꾸지 못했어', '브라우저 저장소에서 파일을 지우지 못했어. 브라우저를 다시 연 뒤 한 번 더 시도해줘!');
+    }
+  }
+
+  $('btnWorkSoundFilePick').addEventListener('click', ()=>{
+    markUserGesture();
+    chooseCustomSoundFile_('work');
+  });
+
+  $('btnBreakSoundFilePick').addEventListener('click', ()=>{
+    markUserGesture();
+    chooseCustomSoundFile_('break');
+  });
+
+  $('soundFileInput').addEventListener('change', async (e)=>{
+    markUserGesture();
+    const input = e.currentTarget;
+    const file = input && input.files ? input.files[0] : null;
+    const phase = normalizeSoundPhase_(soundPickerTarget);
+    // 같은 파일을 다시 고를 수 있도록 즉시 비움
+    if (input) input.value = '';
+    if (!file) return;
+
+    if (!isAcceptedMp3_(file)) {
+      showOverlay('MP3 파일만 가능해요', '알림음으로 사용할 .mp3 파일을 선택해줘!');
+      return;
+    }
+    if (file.size > CUSTOM_SOUND_MAX_BYTES) {
+      showOverlay('파일이 조금 커요', '알림음은 각각 8MB 이하 MP3만 저장할 수 있어요. 짧은 알림음 파일로 골라줘!');
+      return;
+    }
+
+    customSoundUserChanged[phase] = true;
+    const record = {
+      blob: file,
+      name: String(file.name || `${soundPhaseLabel_(phase)} 알림음.mp3`).slice(0, 180),
+      type: String(file.type || 'audio/mpeg'),
+      size: Number(file.size || 0),
+      updatedAt: Date.now()
+    };
+
+    try{
+      await customSoundDbPut_(CUSTOM_SOUND_KEYS[phase], record);
+      customSoundStorageAvailable = true;
+      applyCustomSoundRecord_(phase, record);
+      await primeCustomSound_(phase);
+      showOverlay(`${soundPhaseLabel_(phase)} 알림음 설정 완료 🎵`, `“${record.name}” 파일을 이 브라우저에만 저장했어.
+다음 ${soundPhaseLabel_(phase)}부터 이 소리가 울려!`);
+    }catch(err){
+      customSoundStorageAvailable = false;
+      updateCustomSoundUI_(phase);
+      showOverlay('브라우저 저장에 실패했어', '현재 브라우저에서는 MP3를 안전하게 보관할 수 없어요. 시크릿 창이 아닌 일반 브라우저에서 다시 시도해줘!');
+    }
+  });
+
+  $('btnWorkSoundPreview').addEventListener('click', async ()=>{
+    markUserGesture();
+    await previewCustomSound_('work');
+  });
+
+  $('btnBreakSoundPreview').addEventListener('click', async ()=>{
+    markUserGesture();
+    await previewCustomSound_('break');
+  });
+
+  $('btnWorkSoundFileReset').addEventListener('click', async ()=>{
+    markUserGesture();
+    await resetCustomSound_('work');
+  });
+
+  $('btnBreakSoundFileReset').addEventListener('click', async ()=>{
+    markUserGesture();
+    await resetCustomSound_('break');
+  });
+
+  $('btnSound').addEventListener('click', async ()=>{
+    markUserGesture();
+    soundEnabled = !soundEnabled;
+    if (soundEnabled) {
+      startAudioKeepAlive_();
+    } else {
+      stopAudioKeepAlive_();
+      stopCustomSound_();
+    }
+    renderTop();
+    if (soundEnabled) {
+      // 켜짐 확인은 항상 기존 비프음으로 짧게 들려줘서 MP3 설정 여부와 무관하게 직관적
+      beep(880, 60, 0.14);
+      setTimeout(()=>beep(1100, 60, 0.14), 90);
+    }
+  });
+
+  $('btnLeave').addEventListener('click', async ()=>{
+    markUserGesture();
+    $('btnLeave').disabled = true;
+
+    if (!sessionId) {
+      stopAll();
+      showOverlay('나갔어요', '이미 세션이 없거나 종료된 상태.');
+      return;
+    }
+
+    const sid = sessionId;
+    stopAll();
+    await stopPresence_();
+
+    google.script.run
+      .withSuccessHandler((res) => {
+        if (res && res.ended) showOverlay('세션 종료', '마지막 접속자라서 세션이 닫혔어요!');
+        else showOverlay('나갔어요', '안녕! 창을 닫아도 돼요 😊');
+      })
+      .withFailureHandler(() => {
+        showOverlay('나갔어요', '안녕! (서버 통신이 끊겨도 로컬은 종료했어요)');
+      })
+      .leaveSession(sid, CLIENT_ID);
+  });
+
+  $('btnOnline').addEventListener('click', openOnlineList);
+  $('btnGuide').addEventListener('click', openGuide);
+
+  // ✅ 상단 '☰ 메뉴' 드롭다운
+  (function(){
+    const btn = document.getElementById('btnMenu');
+    const panel = document.getElementById('menuPanel');
+    const closeBtn = document.getElementById('btnMenuClose');
+    if (!btn || !panel) return;
+
+    function setOpen(on){
+      panel.classList.toggle('show', !!on);
+      panel.setAttribute('aria-hidden', on ? 'false' : 'true');
+    }
+
+    btn.addEventListener('click', (e)=>{
+      e.stopPropagation();
+      setOpen(!panel.classList.contains('show'));
+    });
+
+    closeBtn && closeBtn.addEventListener('click', (e)=>{
+      e.stopPropagation();
+      setOpen(false);
+    });
+
+    panel.addEventListener('click', (e)=>e.stopPropagation());
+    document.addEventListener('click', ()=>setOpen(false));
+    document.addEventListener('keydown', (e)=>{ if (e.key === 'Escape') setOpen(false); });
+
+    // 가이드를 열면 메뉴도 닫기
+    const guideBtn = document.getElementById('btnGuide');
+    guideBtn && guideBtn.addEventListener('click', ()=>setOpen(false));
+
+    // 공지를 열면 메뉴도 닫기
+    const noticeBtn = document.getElementById('btnNotice');
+    noticeBtn && noticeBtn.addEventListener('click', ()=>setOpen(false));
+  })();
+
+
+
+  // ✅ 공지 버튼(닉네임 옆)
+  (function(){
+    const nb = document.getElementById('btnNotice');
+    if (!nb) return;
+    nb.addEventListener('click', ()=>{ markUserGesture(); window.noticeOpen(false); });
+    nb.addEventListener('keydown', (e)=>{
+      if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); markUserGesture(); window.noticeOpen(false); }
+    });
+  })();
+
+  document.addEventListener('visibilitychange', ()=>{
+    schedulePing_();
+  });
+
+  // =====================
+  // Boot
+  // =====================
+  document.addEventListener('DOMContentLoaded', ()=>{
+    const savedName = localStorage.getItem('VENT_NAME_V2');
+    if (savedName && !$('user').value) $('user').value = savedName;
+
+    $('user').addEventListener('input', async ()=>{
+      localStorage.setItem('VENT_NAME_V2', myName());
+      // presence 이름도 따라갱신
+      if (presenceStarted && sessionId && presenceUid){
+        try{
+          await fbEnsureReady_();
+          const nameRef = window.FB.ref(window.FB.db, `${fbPresenceNamePath_(String(sessionId))}/${presenceUid}`);
+          await window.FB.update(nameRef, { name: String(myName()).trim().slice(0,12) || '익명', ts: Date.now() });
+        }catch(e){}
+      }
+    });
+
+    initLogSizer();
+    initNewMessagesButton_();
+    updateNoticeButton_();
+    // Firebase/시트와 무관한 브라우저 로컬 MP3만 조용히 복원
+    loadCustomSoundsFromBrowser_();
+
+    // 첫 제스처 확보
+    window.addEventListener('pointerdown', markUserGesture, { once:true });
+    window.addEventListener('keydown', markUserGesture, { once:true });
+
+    // 1) 초기 ping (세션 확보)
+    joinOrPing_();
+    schedulePing_();
+
+    // 2) 타이머 로컬 tick
+    setInterval(()=>{ if(!isStopped) tick(); }, 1000);
+
+    // 3) 페이지 종료 시 presence 정리(best effort)
+    window.addEventListener('beforeunload', () => {
+      try{ stopPresence_(); }catch(e){}
+    });
+  });
+
+
+</script>
+
+<!-- ✅ PWA 1단계 v7: 앱 내부 웹으로 열기 버튼 제거 -->
+<script>
+(function POMO_PWA_LITE_V2(){
+  const APP_NAME = '마끝마 뽀모';
+  const APP_SHORT_NAME = '뽀모';
+  const THEME_COLOR = '#ffd1e8';
+  const BG_COLOR = '#fff7fb';
+
+  let deferredInstallPrompt = null;
+  let installPromptReady = false;
+
+  function addOrUpdateMeta(name, content){
+    let el = document.querySelector(`meta[name="${name}"]`);
+    if (!el) {
+      el = document.createElement('meta');
+      el.setAttribute('name', name);
+      document.head.appendChild(el);
+    }
+    el.setAttribute('content', content);
+  }
+
+  function addOrUpdateLink(rel, href, attrs){
+    let el = document.querySelector(`link[rel="${rel}"]`);
+    if (!el) {
+      el = document.createElement('link');
+      el.setAttribute('rel', rel);
+      document.head.appendChild(el);
+    }
+    el.setAttribute('href', href);
+    Object.entries(attrs || {}).forEach(([k, v]) => el.setAttribute(k, v));
+    return el;
+  }
+
+  function makeIconSvg(){
+    return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+      <rect width="512" height="512" rx="116" fill="${BG_COLOR}"/>
+      <circle cx="256" cy="250" r="150" fill="#ffffff" stroke="#f2d7ea" stroke-width="18"/>
+      <path d="M188 152h136" stroke="#ffd1e8" stroke-width="34" stroke-linecap="round"/>
+      <path d="M256 250V164M256 250l72 52" stroke="#7b214e" stroke-width="26" stroke-linecap="round"/>
+      <circle cx="256" cy="250" r="18" fill="#7b214e"/>
+      <path d="M168 394c35 28 141 28 176 0" stroke="#c9f3ea" stroke-width="34" stroke-linecap="round"/>
+      <text x="256" y="462" text-anchor="middle" font-size="58" font-family="Arial, sans-serif" font-weight="900" fill="#7b214e">뽀모</text>
+    </svg>`;
+  }
+
+  function installManifestAndIcons(){
+    // GitHub 독립 실행형에서는 정적 manifest.webmanifest/service-worker를 사용합니다.
+    // Apps Script 화면용으로 넣어둔 blob manifest 생성은 PWA 판정을 흔들 수 있어 건너뜁니다.
+    if (window.POMO_GITHUB_STANDALONE_VERSION) return;
+    addOrUpdateMeta('theme-color', THEME_COLOR);
+    addOrUpdateMeta('mobile-web-app-capable', 'yes');
+    addOrUpdateMeta('apple-mobile-web-app-capable', 'yes');
+    addOrUpdateMeta('apple-mobile-web-app-title', APP_NAME);
+    addOrUpdateMeta('apple-mobile-web-app-status-bar-style', 'default');
+    addOrUpdateMeta('msapplication-TileColor', THEME_COLOR);
+    addOrUpdateMeta('format-detection', 'telephone=no');
+
+    const iconUrl = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(makeIconSvg());
+    addOrUpdateLink('icon', iconUrl, { type:'image/svg+xml', sizes:'any' });
+    addOrUpdateLink('apple-touch-icon', iconUrl, { sizes:'512x512' });
+
+    const manifest = {
+      name: APP_NAME,
+      short_name: APP_SHORT_NAME,
+      description: '작업 시간과 글자수 기록을 함께 쓰는 공용 뽀모 웹앱',
+      start_url: location.href.split('#')[0],
+      scope: location.href.split('?')[0].replace(/\/exec.*/, '/'),
+      display: 'standalone',
+      display_override: ['standalone', 'minimal-ui', 'browser'],
+      orientation: 'portrait',
+      background_color: BG_COLOR,
+      theme_color: THEME_COLOR,
+      icons: [
+        { src: iconUrl, sizes: '512x512', type: 'image/svg+xml', purpose: 'any maskable' }
+      ]
+    };
+
+    try {
+      const blob = new Blob([JSON.stringify(manifest, null, 2)], { type: 'application/manifest+json' });
+      const manifestUrl = URL.createObjectURL(blob);
+      addOrUpdateLink('manifest', manifestUrl, {});
+    } catch(e) {
+      // manifest 생성 실패해도 기존 앱 기능에는 영향 없게 통과
+    }
+  }
+
+  function isStandalone(){
+    return window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone === true;
+  }
+
+  function isIOSLike(){
+    return /iphone|ipad|ipod/i.test(navigator.userAgent || '') ||
+      ((navigator.platform === 'MacIntel') && (navigator.maxTouchPoints > 1));
+  }
+
+  function isAndroid(){
+    return /android/i.test(navigator.userAgent || '');
+  }
+
+  function closeMenuPanel(){
+    const panel = document.getElementById('menuPanel');
+    if (panel) {
+      panel.classList.remove('show');
+      panel.setAttribute('aria-hidden', 'true');
+    }
+  }
+
+  function safeOverlay(title, html){
+    if (typeof window.showOverlay === 'function') {
+      window.showOverlay(title, html, true);
+      return;
+    }
+    // 기존 showOverlay가 아직 준비되지 않은 예외 상황용 안전망
+    const plain = String(html || '').replace(/<br\s*\/?>/gi, '\n').replace(/<[^>]*>/g, '');
+    alert(`${title}\n\n${plain}`);
+  }
+
+  function installGuideHtml(reason){
+    if (isStandalone()) {
+      return '이미 앱처럼 실행 중이에요! 🌷';
+    }
+
+    const note = reason
+      ? `<div style="margin-bottom:10px;padding:10px 12px;border-radius:14px;background:#fff4cc;border:1px dashed #f2d7ea;font-weight:900;line-height:1.45;">${reason}</div>`
+      : '';
+
+    if (isIOSLike()) {
+      return note + [
+        '<b>iPhone/iPad에서 홈 화면에 추가하기</b>',
+        '1. 가능하면 <b>Safari</b>로 이 뽀모 웹앱을 열어주세요.',
+        '2. 아래쪽 또는 위쪽의 <b>공유</b> 버튼을 눌러주세요.',
+        '3. <b>홈 화면에 추가</b>를 선택해주세요.',
+        '4. 이름을 확인하고 <b>추가</b>를 누르면 홈 화면에서 앱처럼 열 수 있어요.',
+        '<br/><span style="color:#777;font-weight:800;">※ iOS에서는 브라우저에 따라 설치 메뉴 이름이 다르게 보일 수 있어요.</span>'
+      ].join('<br/>');
+    }
+
+    if (isAndroid()) {
+      return note + [
+        '<b>Android에서 홈 화면에 추가하기</b>',
+        '1. Chrome 또는 Samsung Internet으로 이 뽀모 웹앱을 열어주세요.',
+        '2. 브라우저 메뉴 <b>⋮</b>를 열어주세요.',
+        '3. <b>홈 화면에 추가</b> 또는 <b>앱 설치</b>를 선택해주세요.',
+        '4. 설치 메뉴가 안 보이면 현재 브라우저가 이 페이지를 정식 PWA로 보지 않는 상태예요.'
+      ].join('<br/>');
+    }
+
+    return note + [
+      '<b>PC에서 앱처럼 쓰는 가장 쉬운 방법</b>',
+      '1. <b>Microsoft Edge</b>로 이 뽀모 웹앱 주소를 열어주세요.',
+      '2. 오른쪽 위 <b>…</b> 메뉴를 눌러주세요.',
+      '3. <b>앱</b> → <b>이 사이트를 앱으로 설치</b>를 선택해주세요.',
+      '4. 설치 후 작업 표시줄/시작 메뉴에 고정하면 앱처럼 열 수 있어요.',
+      '<br/><b>Chrome에서 설치 메뉴가 안 보일 때</b>',
+      'Chrome은 이 페이지를 정식 PWA로 인정할 때만 주소창 설치 아이콘이나 <b>앱 설치</b> 메뉴를 보여줄 수 있어요.',
+      '설치 메뉴가 없으면 <b>⋮</b> → <b>저장 및 공유</b> 또는 <b>도구 더보기</b> → <b>바로가기 만들기</b>를 찾아주세요.',
+      '<br/><span style="color:#777;font-weight:800;">※ 그래도 메뉴가 없으면 정상이에요. Apps Script 웹앱은 정식 PWA 설치 조건을 만족시키기 어려워서, PC에서는 Edge 방식이 가장 안정적이에요.</span>'
+    ].join('<br/>');
+  }
+
+  function updateInstallButton(){
+    const btn = document.getElementById('btnInstallApp');
+    if (!btn) return;
+    if (isStandalone()) {
+      btn.classList.add('isHidden');
+      return;
+    }
+    btn.classList.remove('isHidden');
+    btn.textContent = installPromptReady ? '📲 앱 설치' : '📲 앱으로 추가';
+  }
+
+  async function tryNativePrompt_(){
+    if (!deferredInstallPrompt) return false;
+
+    const promptEvent = deferredInstallPrompt;
+    deferredInstallPrompt = null;
+    installPromptReady = false;
+    updateInstallButton();
+
+    try {
+      const promptResult = promptEvent.prompt();
+      if (promptResult && typeof promptResult.catch === 'function') {
+        promptResult.catch(()=>{});
+      }
+
+      // 일부 환경에서는 prompt()가 조용히 실패하거나 userChoice가 오래 pending 될 수 있어 fallback을 둠
+      const choice = await Promise.race([
+        promptEvent.userChoice || Promise.resolve({ outcome: 'unknown' }),
+        new Promise(resolve => setTimeout(() => resolve({ outcome: 'timeout' }), 1200))
+      ]);
+
+      // accepted/dismissed가 명확히 오면 브라우저가 반응한 것으로 판단
+      return !!(choice && choice.outcome && choice.outcome !== 'timeout');
+    } catch(e) {
+      return false;
+    }
+  }
+
+  async function handleInstallClick(e){
+    if (e) {
+      e.preventDefault();
+      e.stopPropagation();
+    }
+    closeMenuPanel();
+
+    if (isStandalone()) {
+      safeOverlay('📲 앱 실행 중', '이미 앱처럼 실행 중이에요!');
+      return false;
+    }
+
+    const nativePromptWorked = await tryNativePrompt_();
+    if (nativePromptWorked) return false;
+
+    const reason = deferredInstallPrompt
+      ? '브라우저 설치창을 호출했지만 현재 환경에서 바로 열리지 않았어요. 아래 방법으로 추가하면 돼요.'
+      : '현재 브라우저가 이 페이지를 정식 설치형 PWA로 판정하지 않아서 자동 설치창을 띄울 수 없어요. 버튼은 정상이고, 아래 방법으로 앱처럼 열 수 있어요.';
+
+    safeOverlay('📲 앱처럼 열기 안내', installGuideHtml(reason));
+    return false;
+  }
+
+  window.POMO_INSTALL_HELP = handleInstallClick;
+
+  window.addEventListener('beforeinstallprompt', (e)=>{
+    e.preventDefault();
+    deferredInstallPrompt = e;
+    installPromptReady = true;
+    updateInstallButton();
+  });
+
+  window.addEventListener('appinstalled', ()=>{
+    deferredInstallPrompt = null;
+    installPromptReady = false;
+    updateInstallButton();
+  });
+
+  function bindInstallButton(){
+    const btn = document.getElementById('btnInstallApp');
+    if (!btn || btn.dataset.pomoInstallBound === '1') return;
+    btn.dataset.pomoInstallBound = '1';
+    btn.addEventListener('click', handleInstallClick, true);
+    // 혹시 Apps Script/브라우저 조합에서 addEventListener 타이밍이 꼬일 때를 대비한 이중 안전장치
+    btn.onclick = handleInstallClick;
+    updateInstallButton();
+  }
+
+  installManifestAndIcons();
+  bindInstallButton();
+
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', bindInstallButton);
+  } else {
+    bindInstallButton();
+  }
+
+  // 메뉴가 늦게 그려지는 예외 상황까지 방어
+  setTimeout(bindInstallButton, 300);
+  setTimeout(bindInstallButton, 1200);
+})();
+</script>
+
+</body>
+</html>

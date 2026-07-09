@@ -1,0 +1,21 @@
+<!doctype html>
+<html lang="ko">
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>뽀모 캐시 정리</title>
+<style>body{font-family:system-ui,"Noto Sans KR",sans-serif;background:#fff7fb;color:#2b2b2b;display:grid;place-items:center;min-height:100vh;margin:0;padding:20px}.card{background:#fff;border:1px solid #f2d7ea;border-radius:22px;box-shadow:0 14px 42px rgba(78,35,65,.12);padding:22px;max-width:460px;text-align:center}.btn{display:inline-block;margin-top:14px;border:1px solid #f2d7ea;border-radius:999px;padding:10px 14px;background:#ffd1e8;color:#2b2b2b;text-decoration:none;font-weight:900}</style></head>
+<body><div class="card"><h1>🧹 뽀모 캐시 정리 중</h1><p id="msg">잠시만 기다려주세요.</p><a class="btn" href="./">뽀모 다시 열기</a></div>
+<script>
+(async()=>{
+ const msg=document.getElementById('msg');
+ try{
+   if('serviceWorker' in navigator){
+     const regs=await navigator.serviceWorker.getRegistrations();
+     await Promise.all(regs.map(r=>r.unregister()));
+   }
+   if('caches' in window){
+     const keys=await caches.keys();
+     await Promise.all(keys.filter(k=>/^pomo-/i.test(k)||/pomo/i.test(k)).map(k=>caches.delete(k)));
+   }
+   msg.textContent='정리 완료! 아래 버튼으로 다시 열어주세요.';
+ }catch(e){ msg.textContent='정리 중 일부 실패했지만, 아래 버튼으로 다시 열어보세요.'; }
+})();
+</script></body></html>
