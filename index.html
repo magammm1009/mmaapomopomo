@@ -5,18 +5,17 @@
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
   <title>🫧 마끝마 뽀모</title>
 
-  <!-- ✅ PWA 기본 설정 -->
-  <link rel="manifest" href="./manifest.webmanifest" />
+  <link rel="manifest" href="./manifest.webmanifest?v=20260709-framefix" />
   <meta name="theme-color" content="#ffd1e8" />
   <meta name="background-color" content="#fff7fb" />
   <meta name="mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-status-bar-style" content="default" />
   <meta name="apple-mobile-web-app-title" content="뽀모" />
-  <link rel="apple-touch-icon" href="./icons/icon-192.png" />
-  <link rel="icon" href="./icons/icon-192.png" />
+  <link rel="apple-touch-icon" href="./icons/icon-192.png?v=20260709-framefix" />
+  <link rel="icon" href="./icons/icon-192.png?v=20260709-framefix" />
 
- <script src="./config.js?v=20260708-2"></script>
+  <script src="./config.js?v=20260709-framefix"></script>
   <style>
     :root{
       --bg:#fff7fb;
@@ -47,66 +46,6 @@
       padding-top: env(safe-area-inset-top);
       padding-bottom: env(safe-area-inset-bottom);
     }
-    .topbar{
-      min-height:54px;
-      display:flex;
-      align-items:center;
-      justify-content:space-between;
-      gap:10px;
-      padding:10px 12px;
-      border-bottom:1px solid var(--line);
-      background:rgba(255,255,255,.88);
-      backdrop-filter: blur(12px);
-      -webkit-backdrop-filter: blur(12px);
-      box-shadow:0 8px 24px rgba(0,0,0,.04);
-      z-index:3;
-    }
-    .brand{
-      min-width:0;
-      display:flex;
-      align-items:center;
-      gap:10px;
-      font-weight:900;
-    }
-    .icon{
-      width:34px;height:34px;
-      display:grid;place-items:center;
-      border-radius:12px;
-      background:var(--pink);
-      flex:0 0 auto;
-    }
-    .brandText{ min-width:0; }
-    .title{
-      line-height:1.1;
-      white-space:nowrap;
-      overflow:hidden;
-      text-overflow:ellipsis;
-    }
-    .sub{
-      margin-top:3px;
-      font-size:12px;
-      color:var(--muted);
-      font-weight:800;
-      white-space:nowrap;
-      overflow:hidden;
-      text-overflow:ellipsis;
-    }
-    .actions{ display:flex; align-items:center; gap:8px; flex:0 0 auto; }
-    button, a.btn{
-      border:1px solid var(--line);
-      background:#fff;
-      color:var(--text);
-      border-radius:999px;
-      padding:8px 10px;
-      font-weight:900;
-      font-size:13px;
-      line-height:1;
-      text-decoration:none;
-      cursor:pointer;
-      white-space:nowrap;
-    }
-    button.primary{ background:var(--pink); border-color:#ffc0df; }
-    button:hover, a.btn:hover{ filter:brightness(.985); }
     .frameWrap{ position:relative; min-height:0; }
     #pomoFrame{
       position:absolute;
@@ -126,7 +65,7 @@
       z-index:2;
     }
     .card{
-      width:min(480px,100%);
+      width:min(500px,100%);
       background:var(--card);
       border:1px solid var(--line);
       border-radius:22px;
@@ -157,14 +96,25 @@
       animation:spin 1s linear infinite;
     }
     @keyframes spin{ to{ transform:rotate(360deg); } }
-    @media (display-mode: standalone){
-      .topbar{ min-height:50px; }
+    .buttonRow{ display:flex; justify-content:center; gap:8px; flex-wrap:wrap; margin-top:12px; }
+    button, a.btn{
+      border:1px solid var(--line);
+      background:#fff;
+      color:var(--text);
+      border-radius:999px;
+      padding:10px 13px;
+      font-weight:900;
+      font-size:13px;
+      line-height:1;
+      text-decoration:none;
+      cursor:pointer;
+      white-space:nowrap;
     }
+    button.primary, a.btn.primary{ background:var(--pink); border-color:#ffc0df; }
+    .tiny{ font-size:12px !important; color:#777 !important; }
     @media (max-width:420px){
-      .title{ font-size:14px; }
-      .sub{ display:none; }
-      button, a.btn{ font-size:12px; padding:8px 9px; }
-      .topbar{ padding:8px 9px; }
+      .card h1{ font-size:20px; }
+      button, a.btn{ width:100%; }
     }
   </style>
 </head>
@@ -186,8 +136,22 @@
         <div class="card">
           <div class="loader"></div>
           <h1>뽀모 여는 중...</h1>
-          <p>조금만 기다려주세요. iframe이 차단되면 아래 버튼으로 바로 열 수 있어요.</p>
-          <p><a class="btn" id="btnOpen" target="_blank" rel="noopener noreferrer">웹으로 열기</a></p>
+          <p id="loadingText">구글 웹앱 연결을 확인하고 있어요.</p>
+          <div class="buttonRow">
+            <a class="btn primary" id="btnOpen" target="_self" rel="noopener noreferrer">바로 열기</a>
+          </div>
+          <p class="tiny">iframe이 막히면 같은 창에서 자동으로 열게 해두었어요.</p>
+        </div>
+      </section>
+
+      <section class="panel hidden" id="fallbackPanel">
+        <div class="card">
+          <h1>🫧 뽀모로 이동 중</h1>
+          <p>Google이 오늘은 iframe 표시를 막고 있어요. 같은 창에서 뽀모를 바로 열게요.</p>
+          <div class="buttonRow">
+            <a class="btn primary" id="btnFallbackOpen" target="_self" rel="noopener noreferrer">지금 바로 열기</a>
+          </div>
+          <p class="tiny">이 화면이 오래 보이면 버튼을 눌러주세요.</p>
         </div>
       </section>
     </main>
@@ -196,82 +160,149 @@
   <script>
     const config = window.POMO_APP_CONFIG || {};
     const APP_URL = String(config.POMO_APP_URL || '').trim();
-    const PLACEHOLDER = !APP_URL || APP_URL.includes('여기에_Apps_Script');
+    const OPEN_MODE = String(config.POMO_OPEN_MODE || 'auto').trim().toLowerCase();
+    const FALLBACK_MS = Math.max(1600, Number(config.IFRAME_FALLBACK_MS || 2800));
+    const PLACEHOLDER = !APP_URL || APP_URL.includes('여기에_Apps_Script') || APP_URL.includes('AKfycbxxxxxxxx');
+
     const frame = document.getElementById('pomoFrame');
     const setupPanel = document.getElementById('setupPanel');
     const loadingPanel = document.getElementById('loadingPanel');
+    const fallbackPanel = document.getElementById('fallbackPanel');
+    const loadingText = document.getElementById('loadingText');
     const btnOpen = document.getElementById('btnOpen');
+    const btnFallbackOpen = document.getElementById('btnFallbackOpen');
 
     let deferredPrompt = null;
+    let appReady = false;
+    let fallbackTimer = null;
+    let redirectTimer = null;
 
     function setStatus(text){ console.log('[PWA shell]', text); }
-    function hide(el){ el.classList.add('hidden'); }
-    function show(el){ el.classList.remove('hidden'); }
+    function hide(el){ if (el) el.classList.add('hidden'); }
+    function show(el){ if (el) el.classList.remove('hidden'); }
+
+    function addShellParams(url){
+      try {
+        const u = new URL(url);
+        if (!u.searchParams.has('pwa_shell')) u.searchParams.set('pwa_shell', 'github');
+        if (!u.searchParams.has('pwa_v')) u.searchParams.set('pwa_v', '20260709-framefix');
+        return u.toString();
+      } catch(e) {
+        return url;
+      }
+    }
+
+    const TARGET_URL = PLACEHOLDER ? '' : addShellParams(APP_URL);
+
+    function moveTopLevel(){
+      if (PLACEHOLDER || !TARGET_URL) return;
+      setStatus('top-level 이동');
+      try { window.location.replace(TARGET_URL); }
+      catch(e) { window.location.href = TARGET_URL; }
+    }
+
+    function showFallbackThenRedirect(){
+      if (appReady || PLACEHOLDER || !TARGET_URL || OPEN_MODE === 'iframe') return;
+      hide(loadingPanel);
+      show(fallbackPanel);
+      setStatus('iframe 차단 또는 준비 신호 없음 — 같은 창 이동');
+      clearTimeout(redirectTimer);
+      redirectTimer = setTimeout(moveTopLevel, 650);
+    }
+
+    function markAppReady(){
+      if (appReady) return;
+      appReady = true;
+      clearTimeout(fallbackTimer);
+      clearTimeout(redirectTimer);
+      hide(setupPanel);
+      hide(loadingPanel);
+      hide(fallbackPanel);
+      show(frame);
+      setStatus('연결됨');
+      sendConfigToFrame();
+    }
+
+    function sendConfigToFrame(){
+      if (PLACEHOLDER || !frame || !frame.contentWindow) return;
+      try {
+        frame.contentWindow.postMessage({
+          type: 'POMO_PWA_SHELL_CONFIG',
+          appUrl: TARGET_URL,
+          shell: 'github-pwa',
+          version: '20260709-framefix'
+        }, '*');
+      } catch (e) {}
+    }
 
     if (PLACEHOLDER) {
       show(setupPanel);
       hide(loadingPanel);
-      btnOpen.removeAttribute('href');
+      hide(fallbackPanel);
+      if (btnOpen) btnOpen.removeAttribute('href');
+      if (btnFallbackOpen) btnFallbackOpen.removeAttribute('href');
       setStatus('config.js 설정 필요');
     } else {
       hide(setupPanel);
       show(loadingPanel);
-      btnOpen.href = APP_URL;
-      frame.src = APP_URL;
-      setStatus('Apps Script 웹앱 연결 중');
-      setTimeout(sendConfigToFrame, 1500);
+      hide(fallbackPanel);
+      if (btnOpen) btnOpen.href = TARGET_URL;
+      if (btnFallbackOpen) btnFallbackOpen.href = TARGET_URL;
 
-      frame.addEventListener('load', () => {
-        hide(loadingPanel);
-        setStatus('연결됨');
-        sendConfigToFrame();
-        setTimeout(sendConfigToFrame, 500);
+      if (OPEN_MODE === 'redirect') {
+        if (loadingText) loadingText.textContent = '같은 창에서 뽀모를 바로 열고 있어요.';
+        setTimeout(moveTopLevel, 150);
+      } else {
+        frame.src = TARGET_URL;
+        setStatus('Apps Script 웹앱 iframe 연결 시도');
+        setTimeout(sendConfigToFrame, 700);
         setTimeout(sendConfigToFrame, 1500);
-      });
 
-      // iframe이 차단되거나 로그인/권한 화면이 막히는 경우를 대비해 안내 유지
-      setTimeout(() => {
-        if (!loadingPanel.classList.contains('hidden')) {
-          setStatus('연결 지연 — 웹으로 열기 가능');
-        }
-      }, 4500);
+        frame.addEventListener('load', () => {
+          // X-Frame-Options로 차단된 Google 오류 화면도 load처럼 보일 수 있어서
+          // 여기서 바로 loading을 숨기지 않고, 앱 내부의 READY postMessage를 기다립니다.
+          setStatus('iframe load 감지 — 앱 준비 신호 대기');
+          sendConfigToFrame();
+          setTimeout(sendConfigToFrame, 500);
+        });
+
+        fallbackTimer = setTimeout(showFallbackThenRedirect, FALLBACK_MS);
+      }
     }
+
+    window.addEventListener('message', (event) => {
+      const data = event && event.data ? event.data : null;
+      if (!data || typeof data !== 'object') return;
+
+      if (data.type === 'POMO_APP_READY' || data.type === 'POMO_PWA_READY' || data.type === 'POMO_READY') {
+        markAppReady();
+        return;
+      }
+
+      if (data.type === 'POMO_OPEN_WEB') {
+        if (!PLACEHOLDER && TARGET_URL) moveTopLevel();
+      }
+    });
+
     window.addEventListener('beforeinstallprompt', (event) => {
       event.preventDefault();
       deferredPrompt = event;
       setStatus('설치 가능');
     });
-    window.addEventListener('appinstalled', () => {
-      setStatus('설치 완료');
 
+    window.addEventListener('appinstalled', () => {
+      deferredPrompt = null;
+      setStatus('설치 완료');
     });
 
     if (window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone) {
-
       setStatus('앱 모드 실행 중');
     }
 
-
-    function sendConfigToFrame(){
-      if (PLACEHOLDER || !frame || !frame.contentWindow) return;
-      try {
-        frame.contentWindow.postMessage({ type: 'POMO_PWA_SHELL_CONFIG', appUrl: APP_URL }, '*');
-      } catch (e) {}
-    }
-
-    window.addEventListener('message', (event) => {
-      const data = event && event.data ? event.data : null;
-      if (!data || data.type !== 'POMO_OPEN_WEB') return;
-      if (!PLACEHOLDER && APP_URL) {
-        window.open(APP_URL, '_blank', 'noopener,noreferrer');
-      }
-    });
-
     if ('serviceWorker' in navigator) {
       window.addEventListener('load', () => {
-        navigator.serviceWorker.register('./service-worker.js', { updateViaCache: 'none' })
+        navigator.serviceWorker.register('./service-worker.js?v=20260709-framefix', { updateViaCache: 'none' })
           .then((registration) => {
-            // 앱을 열 때마다 새 service-worker.js를 빠르게 확인합니다.
             registration.update().catch(() => {});
           })
           .catch((err) => {
