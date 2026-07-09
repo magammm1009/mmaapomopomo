@@ -16,7 +16,7 @@
   <link rel="apple-touch-icon" href="./icons/icon-192.png" />
   <link rel="icon" href="./icons/icon-192.png" />
 
- <script src="./config.js?v=20260708-2"></script>
+ <script src="./config.js?v=20260709-direct-1"></script>
   <style>
     :root{
       --bg:#fff7fb;
@@ -185,8 +185,8 @@
       <section class="panel" id="loadingPanel">
         <div class="card">
           <div class="loader"></div>
-          <h1>뽀모 여는 중...</h1>
-          <p>조금만 기다려주세요. iframe이 차단되면 아래 버튼으로 바로 열 수 있어요.</p>
+          <h1>뽀모로 이동 중...</h1>
+          <p>잠시 후 뽀모 앱으로 바로 이동해요. 자동 이동이 안 되면 아래 버튼을 눌러주세요.</p>
           <p><a class="btn" id="btnOpen" target="_blank" rel="noopener noreferrer">웹으로 열기</a></p>
         </div>
       </section>
@@ -217,24 +217,18 @@
       hide(setupPanel);
       show(loadingPanel);
       btnOpen.href = APP_URL;
-      frame.src = APP_URL;
-      setStatus('Apps Script 웹앱 연결 중');
-      setTimeout(sendConfigToFrame, 1500);
 
-      frame.addEventListener('load', () => {
-        hide(loadingPanel);
-        setStatus('연결됨');
-        sendConfigToFrame();
-        setTimeout(sendConfigToFrame, 500);
-        setTimeout(sendConfigToFrame, 1500);
-      });
-
-      // iframe이 차단되거나 로그인/권한 화면이 막히는 경우를 대비해 안내 유지
+      // ✅ 안정판: Apps Script를 iframe으로 넣지 않고 최상위 페이지로 직접 이동합니다.
+      // 일부 환경에서 script.google.com 중간 응답이 X-Frame-Options: sameorigin을 내려
+      // GitHub Pages iframe 안에서 차단되는 문제가 있어, PWA 껍데기는 진입 게이트로만 사용합니다.
+      if (frame) {
+        frame.removeAttribute('src');
+        frame.style.display = 'none';
+      }
+      setStatus('Apps Script 웹앱으로 직접 이동 중');
       setTimeout(() => {
-        if (!loadingPanel.classList.contains('hidden')) {
-          setStatus('연결 지연 — 웹으로 열기 가능');
-        }
-      }, 4500);
+        window.location.replace(APP_URL);
+      }, 250);
     }
     window.addEventListener('beforeinstallprompt', (event) => {
       event.preventDefault();
