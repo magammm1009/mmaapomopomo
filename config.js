@@ -1,11 +1,8 @@
-// 🔧 리로용 설정 파일 — GitHub 독립 실행형 v3
-// 1) 아래 POMO_APP_URL 값만 본인의 Apps Script 웹앱 배포 URL(/exec)로 바꿔 주세요.
-// 2) 예: https://script.google.com/macros/s/AKfycbxxxxxxxxxxxxxxxx/exec
-// 3) URL 끝에 /dev 말고, 작가님들에게 공유하는 /exec 배포 주소를 넣는 것을 추천해요.
-
-window.POMO_APP_CONFIG = {
-  APP_NAME: '마끝마 뽀모',
-  APP_SHORT_NAME: '뽀모',
-  POMO_APP_URL: 'https://script.google.com/macros/s/AKfycbxNSpdWtv-rBcX__AFgFbdWEIWOQEM-4s0GHJCQKyw96w-0Q63K3zZzN2lzXSiQoNat/exec',
-  THEME_COLOR: '#ffd1e8'
-};
+<!doctype html>
+<html lang="ko"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>뽀모 API 점검</title>
+<style>body{font-family:system-ui,"Noto Sans KR",sans-serif;background:#fff7fb;color:#2b2b2b;margin:0;padding:20px}.card{max-width:680px;margin:0 auto;background:#fff;border:1px solid #f2d7ea;border-radius:20px;padding:18px;box-shadow:0 14px 42px rgba(78,35,65,.12)}button{border:1px solid #f2d7ea;border-radius:999px;background:#ffd1e8;padding:10px 14px;font-weight:900;cursor:pointer}pre{white-space:pre-wrap;word-break:break-all;background:#fff7fb;border:1px dashed #f2d7ea;border-radius:14px;padding:12px}</style>
+<script src="./config.js?v=20260709-github-standalone-v3"></script></head><body><div class="card"><h1>🫧 뽀모 API 점검</h1><p>Apps Script 새 배포가 끝난 뒤 이 버튼을 눌러 <b>ok</b> 응답이 나오면 GitHub 독립형 연결 준비 완료예요.</p><button id="btn">API 점검</button><pre id="out">대기 중</pre></div>
+<script>
+function jsonp(fn,args){return new Promise((resolve,reject)=>{const endpoint=(window.POMO_APP_CONFIG||{}).POMO_APP_URL;const cb='__pomoTest_'+Date.now()+'_'+Math.random().toString(36).slice(2);window[cb]=(p)=>{delete window[cb];s.remove();resolve(p)};const s=document.createElement('script');s.onerror=()=>{delete window[cb];reject(new Error('load failed'))};s.src=endpoint+(endpoint.includes('?')?'&':'?')+'api=rpc&fn='+encodeURIComponent(fn)+'&args='+encodeURIComponent(JSON.stringify(args||[]))+'&callback='+encodeURIComponent(cb)+'&_t='+Date.now();document.head.appendChild(s);setTimeout(()=>reject(new Error('timeout')),15000)})}
+document.getElementById('btn').onclick=async()=>{const out=document.getElementById('out');out.textContent='점검 중...';try{const p=await jsonp('getActiveUsers',[]);out.textContent=JSON.stringify(p,null,2)}catch(e){out.textContent='ERROR: '+(e.message||e)}};
+</script></body></html>

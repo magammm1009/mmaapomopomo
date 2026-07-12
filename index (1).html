@@ -10,11 +10,11 @@
   <link rel="manifest" href="./manifest.webmanifest" />
   <link rel="icon" href="./icons/icon-192.png" />
   <link rel="apple-touch-icon" href="./icons/icon-192.png" />
-  <script src="./config.js?v=20260709-github-standalone-v3-presence-v4"></script>
+  <script src="./config.js?v=20260712-github-standalone-v3-2-audio-control"></script>
   <script>
   (function(){
     'use strict';
-    const VERSION = 'github-standalone-v3-20260709';
+    const VERSION = 'github-standalone-v3.2-20260712';
     const cfg = window.POMO_APP_CONFIG || {};
     const endpoint = String(cfg.POMO_APP_URL || '').trim();
     const isMissing = !endpoint || endpoint.includes('여기에_Apps_Script') || endpoint.includes('YOUR_');
@@ -746,7 +746,66 @@
 }
 .menuLabel{ font-weight: 900; color: var(--text); }
 .menuVal{ font-weight: 900; color: var(--muted); }
-.menuSliderBlock input[type="range"]{ width: 100%; }
+.menuStepper{
+  display:grid;
+  grid-template-columns: 46px minmax(0, 1fr) 46px;
+  align-items:center;
+  gap:8px;
+}
+.stepperBtn{
+  min-width:0 !important;
+  width:46px;
+  height:40px;
+  padding:0 !important;
+  border-radius:12px;
+  border:1px solid rgba(0,0,0,.08);
+  background:#fff;
+  font-size:22px;
+  font-weight:1000;
+  line-height:1;
+  user-select:none;
+  touch-action:manipulation;
+}
+.stepperBtn:active{ transform:translateY(1px); }
+.stepperBtn:disabled{ opacity:.38; cursor:not-allowed; }
+.stepperReadout{
+  min-height:40px;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  border-radius:12px;
+  border:1px solid rgba(0,0,0,.06);
+  background:rgba(255,255,255,.88);
+  font-weight:1000;
+  color:var(--text);
+  font-variant-numeric:tabular-nums;
+}
+.stepperHint{
+  margin-top:6px;
+  text-align:center;
+  color:var(--muted);
+  font-size:10px;
+  font-weight:750;
+}
+.controls button.isPending,
+#btnClaim.isPending{
+  position:relative;
+  opacity:.72;
+  pointer-events:none;
+}
+.controls button.isPending::after,
+#btnClaim.isPending::after{
+  content:"";
+  width:10px;
+  height:10px;
+  margin-left:6px;
+  display:inline-block;
+  border-radius:50%;
+  border:2px solid currentColor;
+  border-right-color:transparent;
+  animation:controlSpin .7s linear infinite;
+}
+@keyframes controlSpin{to{transform:rotate(360deg)}}
 
 /* 좁은 화면에서 메뉴가 너무 커 보이면 */
 @media (max-width: 420px){
@@ -909,17 +968,25 @@
           <div class="menuSliderBlock">
             <div class="menuLabelRow">
               <span class="menuLabel">알림음 볼륨</span>
-              <span class="menuVal" id="soundVolVal">150%</span>
             </div>
-            <input id="soundVol" type="range" min="50" max="800" step="5" value="150" />
+            <div class="menuStepper" aria-label="알림음 볼륨 조절">
+              <button class="stepperBtn" id="soundVolDown" type="button" aria-label="볼륨 낮추기">−</button>
+              <div class="stepperReadout" id="soundVolVal" aria-live="polite">150%</div>
+              <button class="stepperBtn" id="soundVolUp" type="button" aria-label="볼륨 높이기">＋</button>
+            </div>
+            <div class="stepperHint">한 번에 5% · 길게 누르면 연속 조절</div>
           </div>
 
           <div class="menuSliderBlock">
             <div class="menuLabelRow">
               <span class="menuLabel">채팅창 높이</span>
-              <span class="menuVal" id="logSizeVal">260px</span>
             </div>
-            <input id="logSize" type="range" min="180" max="1000" value="260" />
+            <div class="menuStepper" aria-label="채팅창 높이 조절">
+              <button class="stepperBtn" id="logSizeDown" type="button" aria-label="채팅창 낮추기">−</button>
+              <div class="stepperReadout" id="logSizeVal" aria-live="polite">260px</div>
+              <button class="stepperBtn" id="logSizeUp" type="button" aria-label="채팅창 높이기">＋</button>
+            </div>
+            <div class="stepperHint">한 번에 10px · 길게 누르면 연속 조절</div>
           </div>
         </div>
       </div>
@@ -1013,6 +1080,8 @@
   // - 접속자 목록: Firebase presence (stale/중복 닉네임 정리)
   // =====================
 
+  const WORK_SEC = 25 * 60;
+  const BREAK_SEC = 5 * 60;
   let sessionId = null;
   let pom = null;
 
@@ -1060,6 +1129,16 @@
   let keepAliveOsc = null;
   let keepAliveGain = null;
   let keepAliveOn = false;
+  let keepAliveStarting = false;
+  let lastAudioError = '';
+
+  // 공용 타이머 제어 상태/실시간 동기화
+  let controlBusy = false;
+  let controlRequestSeq = 0;
+  let lastControlSyncAt = 0;
+  let pomSyncInFlight = false;
+  let lastZeroSyncAt = 0;
+  const CONTROL_SYNC_MAX_AGE_MS = 60 * 1000;
 
   // 개인 MP3 알림음: 현재 브라우저 IndexedDB에만 저장 (Firebase/서버 미사용)
   // - work: 작업 시작 때, break: 휴식 시작 때 각각 따로 재생
@@ -1080,9 +1159,13 @@
       blob: null,
       name: '',
       url: '',
-      audio: null,
-      source: null,
+      audio: null,          // Web Audio 미지원 환경의 안전 fallback
+      source: null,         // MediaElementSource fallback
       gain: null,
+      buffer: null,         // 디코딩된 MP3: 자동재생 정책 영향을 덜 받는 주 재생 경로
+      bufferSource: null,
+      bufferGain: null,
+      decodePromise: null,
       stopTimer: null
     };
   }
@@ -1200,9 +1283,11 @@
 
   function markUserGesture(){
     userGestured = true;
-    ensureAudio_();
-    // 브라우저 자동재생 정책 대응: 선택한 MP3들을 무음으로 한 번 준비
-    primeCustomSound_();
+    // 클릭 이벤트 안에서 AudioContext만 확실히 깨웁니다.
+    // 예전처럼 MP3를 무음 play/pause하지 않아 미리듣기와 서로 정지시키는 경합이 없습니다.
+    ensureAudio_().then((ready)=>{
+      if (ready && soundEnabled) startAudioKeepAlive_();
+    }).catch(()=>{});
   }
 
   function showOverlay(title, msg, isHtml=false, hideOkBtn=false){
@@ -1235,10 +1320,11 @@
     iAmHost = !!amHost;
     $('hostLabel').textContent = `HOST: ${hostName}${iAmHost ? ' (나)' : ''}`;
 
-    // 버튼은 "서버가 인정한 호스트"만 활성화
-    $('btnStart').disabled = !iAmHost;
-    $('btnPause').disabled = !iAmHost;
-    $('btnReset').disabled = !iAmHost;
+    // 제어 요청 중에는 중복 클릭을 막고, 평소에는 호스트만 타이머 버튼 활성화
+    $('btnStart').disabled = controlBusy || !iAmHost;
+    $('btnPause').disabled = controlBusy || !iAmHost;
+    $('btnReset').disabled = controlBusy || !iAmHost;
+    $('btnClaim').disabled = controlBusy;
   }
 
   function renderTop(){
@@ -1534,6 +1620,60 @@
     });
   }
 
+  function compactPomForSync_(state){
+    if (!state) return null;
+    const hasPomState =
+      typeof state.isRunning === 'boolean' ||
+      state.phase != null || state.phaseSeconds != null || state.remaining != null;
+    if (!hasPomState) return null;
+    return {
+      isRunning: !!state.isRunning,
+      phase: state.phase === 'break' ? 'break' : 'work',
+      phaseSeconds: Math.max(0, Number(state.phaseSeconds ?? state.remaining ?? localRemaining) || 0),
+      phaseStartMs: state.phaseStartMs == null ? null : Number(state.phaseStartMs),
+      seq: Math.max(0, Number(state.seq || 0)),
+      remaining: Math.max(0, Number(state.remaining ?? state.phaseSeconds ?? localRemaining) || 0)
+    };
+  }
+
+  async function fbBroadcastControl_(state, action){
+    if (!sessionId) return;
+    try{
+      await fbEnsureReady_();
+      const roomId = fbRoomId || sessionId;
+      const r = window.FB.ref(window.FB.db, fbMessagesPath_(String(roomId)));
+      const p = window.FB.push(r);
+      await window.FB.set(p, {
+        ts: Date.now(),
+        name: String(myName() || '익명').slice(0,12),
+        text: '',
+        type: 'pom-control',
+        control: {
+          action: String(action || 'sync').slice(0,20),
+          sourceClientId: CLIENT_ID,
+          hostClientId: String((state && state.hostClientId) || ''),
+          hostName: String((state && state.hostName) || hostName || '익명').slice(0,12),
+          pom: compactPomForSync_(state)
+        }
+      });
+    }catch(e){
+      console.warn('control broadcast failed', e);
+    }
+  }
+
+  function applyControlSync_(v){
+    const ts = Number(v && v.ts || 0);
+    if (!ts || (Date.now() - ts) > CONTROL_SYNC_MAX_AGE_MS || ts <= lastControlSyncAt) return;
+    const c = v && v.control;
+    if (!c || typeof c !== 'object') return;
+    lastControlSyncAt = ts;
+
+    if (c.hostName) hostName = String(c.hostName);
+    if (c.hostClientId) iAmHost = String(c.hostClientId) === CLIENT_ID;
+    if (c.pom) onPomState({ ok:true, ...c.pom });
+    renderTop();
+  }
+
   async function initFirebaseChat_(roomId){
     if (!roomId) return;
     const rid = String(roomId);
@@ -1552,6 +1692,10 @@
       window.FB.onChildAdded(q, (snap) => {
         try{
           const v = snap.val() || {};
+          if (v.type === 'pom-control') {
+            applyControlSync_(v);
+            return;
+          }
           const ts = fmtTsFromMs_(v.ts || Date.now());
           const name = v.name || '익명';
           const text = v.text || '';
@@ -2208,15 +2352,16 @@ window.guideSave = async function(){
   // =====================
   // 뽀모 상태 수신/렌더
   // =====================
-  function onPomState(res){
+  function onPomState(res, options){
     if (!res) return;
+    const opts = options || {};
     if (res.ok === false && res.reason === 'SESSION_CHANGED') { handleSessionEnded(); return; }
 
     const seq = Number(res.seq || 0);
     const phase = res.phase || 'work';
 
     // phase 변경 알림
-    if ((seq !== lastPomSeq && lastPomSeq !== 0) || (lastPhase !== null && phase !== lastPhase)) playPhaseSound(phase);
+    if (!opts.silent && ((seq !== lastPomSeq && lastPomSeq !== 0) || (lastPhase !== null && phase !== lastPhase))) playPhaseSound(phase);
     lastPomSeq = seq;
     lastPhase = phase;
 
@@ -2225,7 +2370,8 @@ window.guideSave = async function(){
     const serverRemain = Number(res.remaining ?? res.phaseSeconds ?? localRemaining);
 
     if (!res.isRunning) {
-      stopAudioKeepAlive_();
+      // 알림이 켜진 동안에는 무음 keep-alive를 유지해 다음 시작/전환 알림 누락을 줄입니다.
+      if (soundEnabled && userGestured) startAudioKeepAlive_();
       anchorRemainSec = null;
       anchorAtMs = null;
       lastRenderSec = null;
@@ -2233,6 +2379,7 @@ window.guideSave = async function(){
       localRemaining = serverRemain;
       $('time').textContent = fmt(localRemaining);
     } else {
+      if (soundEnabled && userGestured) startAudioKeepAlive_();
       const needReset =
         (anchorRemainSec == null || anchorAtMs == null) ||
         (seq !== lastAnchorSeq) ||
@@ -2272,17 +2419,35 @@ window.guideSave = async function(){
       $('time').textContent = fmt(remain);
     }
 
-    // 0초 근처에서는 호스트만 서버에 동기화
-    if (remain === 0 && iAmHost) syncPom();
+    // 0초 근처에서는 호스트만 서버에 한 번 동기화하고 Firebase로 즉시 전파
+    if (remain === 0 && iAmHost && (Date.now() - lastZeroSyncAt) > 1200) {
+      lastZeroSyncAt = Date.now();
+      syncPom();
+    }
   }
 
-  function syncPom(){
-    if (isStopped || !sessionId) return;
-    if (!iAmHost) return; // 폭주 방지
-    google.script.run
-      .withSuccessHandler(res => { if (res) onPomState(res); })
-      .withFailureHandler(()=>{})
-      .getPomodoroState(sessionId);
+  function gasCallPromise_(fnName, args, timeoutMs){
+    if (typeof window.POMO_GAS_CALL === 'function') {
+      return window.POMO_GAS_CALL(fnName, args || [], timeoutMs || 12000);
+    }
+    return new Promise((resolve, reject) => {
+      let runner = google.script.run.withSuccessHandler(resolve).withFailureHandler(reject);
+      runner[fnName].apply(runner, args || []);
+    });
+  }
+
+  async function syncPom(){
+    if (isStopped || !sessionId || !iAmHost || pomSyncInFlight) return;
+    pomSyncInFlight = true;
+    try{
+      const res = await gasCallPromise_('getPomodoroState', [sessionId], 10000);
+      if (res) {
+        onPomState(res);
+        fbBroadcastControl_(res, 'phase-sync');
+      }
+    }catch(e){} finally {
+      pomSyncInFlight = false;
+    }
   }
 
   // =====================
@@ -2303,6 +2468,7 @@ window.guideSave = async function(){
 
   function joinOrPing_(){
     if (isStopped) return;
+    if (controlBusy) { schedulePing_(); return; }
 
     google.script.run
       .withSuccessHandler(async (res) => {
@@ -2410,32 +2576,45 @@ window.guideSave = async function(){
   async function ensureAudio_(){
     try{
       const AudioCtx = window.AudioContext || window.webkitAudioContext;
-      if (!AudioCtx) return;
-      if (!audioCtx) audioCtx = new AudioCtx();
+      if (!AudioCtx) {
+        lastAudioError = 'AudioContext 미지원';
+        return false;
+      }
+      if (!audioCtx || audioCtx.state === 'closed') audioCtx = new AudioCtx();
       if (audioCtx.state === 'suspended') await audioCtx.resume();
-    }catch(e){}
+      const ready = audioCtx.state === 'running';
+      if (!ready) lastAudioError = `AudioContext 상태: ${audioCtx.state}`;
+      return ready;
+    }catch(e){
+      lastAudioError = String(e && e.message || e || '오디오 초기화 실패');
+      return false;
+    }
   }
 
-  function startAudioKeepAlive_(){
-    if (!soundEnabled) return;
-    if (!userGestured) return;
-    if (keepAliveOn) return;
+  async function startAudioKeepAlive_(){
+    if (!soundEnabled || !userGestured || keepAliveOn || keepAliveStarting) return false;
+    keepAliveStarting = true;
     try{
-      ensureAudio_();
-      const AudioCtx = window.AudioContext || window.webkitAudioContext;
-      if (!AudioCtx) return;
-      if (!audioCtx) audioCtx = new AudioCtx();
+      const ready = await ensureAudio_();
+      if (!ready || !audioCtx) return false;
+      if (keepAliveOn) return true;
       keepAliveOsc = audioCtx.createOscillator();
       keepAliveGain = audioCtx.createGain();
       keepAliveOsc.type = 'sine';
       keepAliveOsc.frequency.value = 440;
-      keepAliveGain.gain.value = 0.00001;
+      // 실제로는 들리지 않지만 오디오 그래프가 끊기지 않도록 매우 작은 값 유지
+      keepAliveGain.gain.value = 0.000001;
       keepAliveOsc.connect(keepAliveGain);
       keepAliveGain.connect(audioCtx.destination);
       keepAliveOsc.start();
       keepAliveOn = true;
+      return true;
     }catch(e){
+      lastAudioError = String(e && e.message || e || '오디오 유지 실패');
       keepAliveOn = false;
+      return false;
+    }finally{
+      keepAliveStarting = false;
     }
   }
 
@@ -2452,6 +2631,7 @@ window.guideSave = async function(){
     keepAliveOsc = null;
     keepAliveGain = null;
     keepAliveOn = false;
+    keepAliveStarting = false;
   }
 
   // =====================
@@ -2590,8 +2770,13 @@ window.guideSave = async function(){
     stopCustomSound_(normalized);
     try{ if (slot.source) slot.source.disconnect(); }catch(e){}
     try{ if (slot.gain) slot.gain.disconnect(); }catch(e){}
+    try{ if (slot.bufferGain) slot.bufferGain.disconnect(); }catch(e){}
     slot.source = null;
     slot.gain = null;
+    slot.bufferSource = null;
+    slot.bufferGain = null;
+    slot.buffer = null;
+    slot.decodePromise = null;
 
     try{
       if (slot.audio){
@@ -2644,6 +2829,7 @@ window.guideSave = async function(){
   }
 
   function connectCustomSoundGraph_(phase){
+    // Web AudioBuffer가 주 경로이며, 이 함수는 HTMLAudio fallback 전용입니다.
     const normalized = normalizeSoundPhase_(phase);
     const slot = getCustomSoundSlot_(normalized);
     const audio = getCustomSoundAudio_(normalized);
@@ -2655,7 +2841,6 @@ window.guideSave = async function(){
       slot.gain.connect(audioCtx.destination);
       applyCustomSoundVolume_(normalized);
     }catch(e){
-      // 일부 환경에서는 MediaElementAudioSource 연결이 제한될 수 있어 audio.volume 방식으로 그대로 재생
       slot.source = null;
       slot.gain = null;
     }
@@ -2666,36 +2851,59 @@ window.guideSave = async function(){
     const mult = Math.max(0.05, Math.min(8.0, Number(soundMult) || 1.5));
     for (const currentPhase of phases){
       const slot = getCustomSoundSlot_(currentPhase);
+      if (slot.bufferGain){
+        try{ slot.bufferGain.gain.value = mult; }catch(e){}
+      }
       if (slot.gain){
         try{ slot.gain.gain.value = mult; }catch(e){}
       } else if (slot.audio){
-        // AudioContext 연결을 지원하지 않는 환경에서는 브라우저 최대치(100%)까지 적용
         try{ slot.audio.volume = Math.max(0, Math.min(1, mult)); }catch(e){}
       }
     }
   }
 
-  async function primeOneCustomSound_(phase){
+  function decodeAudioDataCompat_(ctx, arrayBuffer){
+    return new Promise((resolve, reject) => {
+      let settled = false;
+      const ok = (v) => { if (!settled){ settled = true; resolve(v); } };
+      const fail = (e) => { if (!settled){ settled = true; reject(e || new Error('MP3 디코딩 실패')); } };
+      try{
+        const maybe = ctx.decodeAudioData(arrayBuffer, ok, fail);
+        if (maybe && typeof maybe.then === 'function') maybe.then(ok, fail);
+      }catch(e){ fail(e); }
+    });
+  }
+
+  async function decodeCustomSound_(phase){
     const normalized = normalizeSoundPhase_(phase);
-    if (!hasCustomSound_(normalized) || !userGestured) return false;
-    const audio = getCustomSoundAudio_(normalized);
-    if (!audio) return false;
-    try{
-      await ensureAudio_();
-      connectCustomSoundGraph_(normalized);
-      const prevMuted = audio.muted;
-      audio.muted = true;
-      audio.currentTime = 0;
-      await audio.play();
-      audio.pause();
-      audio.currentTime = 0;
-      audio.muted = prevMuted;
-      applyCustomSoundVolume_(normalized);
-      return true;
-    }catch(e){
-      try{ audio.pause(); audio.currentTime = 0; audio.muted = false; }catch(_e){}
-      return false;
-    }
+    const slot = getCustomSoundSlot_(normalized);
+    if (!hasCustomSound_(normalized)) return false;
+    if (slot.buffer) return true;
+    if (slot.decodePromise) return slot.decodePromise;
+
+    slot.decodePromise = (async()=>{
+      try{
+        const AudioCtx = window.AudioContext || window.webkitAudioContext;
+        if (!AudioCtx) return false;
+        if (!audioCtx || audioCtx.state === 'closed') audioCtx = new AudioCtx();
+        const raw = await slot.blob.arrayBuffer();
+        slot.buffer = await decodeAudioDataCompat_(audioCtx, raw.slice(0));
+        return !!slot.buffer;
+      }catch(e){
+        lastAudioError = String(e && e.message || e || 'MP3 디코딩 실패');
+        slot.buffer = null;
+        return false;
+      }finally{
+        slot.decodePromise = null;
+      }
+    })();
+    return slot.decodePromise;
+  }
+
+  async function primeOneCustomSound_(phase){
+    // play/pause로 잠금 해제하지 않고 미리 디코딩만 합니다.
+    // 실제 잠금 해제는 사용자의 클릭 안에서 ensureAudio_가 담당합니다.
+    return decodeCustomSound_(phase);
   }
 
   async function primeCustomSound_(phase){
@@ -2712,10 +2920,16 @@ window.guideSave = async function(){
         clearTimeout(slot.stopTimer);
         slot.stopTimer = null;
       }
+      try{ if (slot.bufferSource) slot.bufferSource.stop(); }catch(e){}
+      try{ if (slot.bufferSource) slot.bufferSource.disconnect(); }catch(e){}
+      try{ if (slot.bufferGain) slot.bufferGain.disconnect(); }catch(e){}
+      slot.bufferSource = null;
+      slot.bufferGain = null;
       try{
         if (slot.audio){
           slot.audio.pause();
           slot.audio.currentTime = 0;
+          slot.audio.muted = false;
         }
       }catch(e){}
     }
@@ -2725,24 +2939,61 @@ window.guideSave = async function(){
     const normalized = normalizeSoundPhase_(phase);
     if (!soundEnabled || !userGestured || !hasCustomSound_(normalized)) return false;
     const slot = getCustomSoundSlot_(normalized);
-    const audio = getCustomSoundAudio_(normalized);
-    if (!audio) return false;
 
     try{
-      await ensureAudio_();
-      connectCustomSoundGraph_(normalized);
-      applyCustomSoundVolume_(normalized);
-      // 미리 듣기/이전 알림과 겹치지 않게 현재 브라우저의 다른 알림음도 함께 정지
+      const ready = await ensureAudio_();
+      if (!ready || !audioCtx) throw new Error(lastAudioError || '오디오가 아직 잠겨 있어요.');
+      await startAudioKeepAlive_();
       stopCustomSound_();
+
+      // 1순위: AudioBuffer — HTMLAudio autoplay 차단과 play/pause 경합을 피함
+      if (await decodeCustomSound_(normalized)){
+        const source = audioCtx.createBufferSource();
+        const gain = audioCtx.createGain();
+        source.buffer = slot.buffer;
+        gain.gain.value = Math.max(0.05, Math.min(8.0, Number(soundMult) || 1.5));
+        source.connect(gain);
+        gain.connect(audioCtx.destination);
+        slot.bufferSource = source;
+        slot.bufferGain = gain;
+        source.onended = () => {
+          if (slot.bufferSource === source){
+            try{ source.disconnect(); }catch(e){}
+            try{ gain.disconnect(); }catch(e){}
+            slot.bufferSource = null;
+            slot.bufferGain = null;
+          }
+          if (slot.stopTimer){ clearTimeout(slot.stopTimer); slot.stopTimer = null; }
+        };
+        source.start(0);
+        slot.stopTimer = setTimeout(
+          () => stopCustomSound_(normalized),
+          Math.max(1000, Number(maxPlayMs) || CUSTOM_SOUND_MAX_PLAY_MS)
+        );
+        lastAudioError = '';
+        return true;
+      }
+
+      // 2순위: 일부 특이 브라우저용 HTMLAudio fallback
+      const audio = getCustomSoundAudio_(normalized);
+      if (!audio) return false;
+      connectCustomSoundGraph_(normalized);
+      audio.muted = false;
+      applyCustomSoundVolume_(normalized);
       audio.currentTime = 0;
       await audio.play();
       slot.stopTimer = setTimeout(
         () => stopCustomSound_(normalized),
         Math.max(1000, Number(maxPlayMs) || CUSTOM_SOUND_MAX_PLAY_MS)
       );
+      lastAudioError = '';
       return true;
     }catch(e){
-      try{ audio.pause(); audio.currentTime = 0; }catch(_e){}
+      lastAudioError = String(e && e.message || e || '재생 실패');
+      try{
+        const audio = slot.audio;
+        if (audio){ audio.pause(); audio.currentTime = 0; audio.muted = false; }
+      }catch(_e){}
       return false;
     }
   }
@@ -2789,6 +3040,8 @@ window.guideSave = async function(){
       customSoundStorageAvailable = false;
     }
     updateCustomSoundUI_();
+    // 복원 직후 MP3를 미리 디코딩해 두어 알람 순간의 지연을 없앱니다.
+    primeCustomSound_().catch(()=>{});
   }
 
   function isAcceptedMp3_(file){
@@ -2851,7 +3104,7 @@ window.guideSave = async function(){
 
   function playPhaseSound(phase){
     const soundPhase = normalizeSoundPhase_(phase);
-    userGestured = true;
+    // 실제 사용자 제스처로 한 번 잠금 해제된 뒤에만 자동 알림을 재생합니다.
     startAudioKeepAlive_();
     ensureAudio_();
 
@@ -2896,55 +3149,82 @@ window.guideSave = async function(){
   // =====================
   // Log sizer
   // =====================
-  function initLogSizer(){
-    const logEl = $('log');
-    const slider = $('logSize');
-    const valEl = $('logSizeVal');
-
-    // ✅ 슬라이더(min/max/value) 기준으로 마지막 높이 복원 (메뉴 UI 변경에도 안전)
-    const minH = Number(slider?.min || 180);
-    const maxH = Number(slider?.max || 1000);
-    const fallbackH = Number(slider?.value || 260) || 260;
-
-    const saved = Number(localStorage.getItem('VENT_LOG_H') || fallbackH);
-    const initH = (saved >= minH && saved <= maxH) ? saved : fallbackH;
-
-    logEl.style.height = initH + 'px';
-    slider.value = String(initH);
-    valEl.textContent = initH + 'px';
-
-    slider.addEventListener('input', () => {
+  function bindHoldStepper_(btn, direction, changeFn){
+    if (!btn) return;
+    let holdDelay = null;
+    let holdInterval = null;
+    const stopHold = () => {
+      if (holdDelay) clearTimeout(holdDelay);
+      if (holdInterval) clearInterval(holdInterval);
+      holdDelay = null;
+      holdInterval = null;
+    };
+    btn.addEventListener('click', () => {
       markUserGesture();
-      const h = Number(slider.value);
-      logEl.style.height = h + 'px';
-      valEl.textContent = h + 'px';
-      localStorage.setItem('VENT_LOG_H', String(h));
-      logEl.scrollTop = logEl.scrollHeight;
+      changeFn(direction);
     });
+    btn.addEventListener('pointerdown', () => {
+      stopHold();
+      holdDelay = setTimeout(() => {
+        holdInterval = setInterval(() => changeFn(direction), 85);
+      }, 420);
+    });
+    ['pointerup','pointercancel','pointerleave','blur'].forEach((ev)=>btn.addEventListener(ev, stopHold));
   }
 
   // =====================
-  // Sound volume slider
+  // Chat height stepper
+  // =====================
+  function initLogSizer(){
+    const logEl = $('log');
+    const valEl = $('logSizeVal');
+    const down = $('logSizeDown');
+    const up = $('logSizeUp');
+    const minH = 180;
+    const maxH = 1000;
+    const stepH = 10;
+    const saved = Number(localStorage.getItem('VENT_LOG_H') || 260);
+    let currentH = (saved >= minH && saved <= maxH) ? saved : 260;
+
+    const apply = (next) => {
+      currentH = Math.max(minH, Math.min(maxH, Math.round(Number(next) / stepH) * stepH));
+      logEl.style.height = currentH + 'px';
+      valEl.textContent = currentH + 'px';
+      localStorage.setItem('VENT_LOG_H', String(currentH));
+      if (down) down.disabled = currentH <= minH;
+      if (up) up.disabled = currentH >= maxH;
+      logEl.scrollTop = logEl.scrollHeight;
+    };
+    bindHoldStepper_(down, -1, (dir)=>apply(currentH + dir * stepH));
+    bindHoldStepper_(up, 1, (dir)=>apply(currentH + dir * stepH));
+    apply(currentH);
+  }
+
+  // =====================
+  // Sound volume stepper
   // =====================
   {
-    const volSlider = $('soundVol');
+    const down = $('soundVolDown');
+    const up = $('soundVolUp');
     const volValEl = $('soundVolVal');
-
+    const minVol = 50;
+    const maxVol = 800;
+    const stepVol = 5;
     const savedVol = Number(localStorage.getItem('VENT_SOUND_MULT') || 150);
-    const initVol = (savedVol >= 50 && savedVol <= 800) ? savedVol : 150;
+    let currentVol = (savedVol >= minVol && savedVol <= maxVol) ? savedVol : 150;
 
-    soundMult = initVol / 100; // 0.5x ~ 8.0x
-    volSlider.value = String(initVol);
-    volValEl.textContent = initVol + '%';
-
-    volSlider.addEventListener('input', () => {
-      markUserGesture();
-      const v = Number(volSlider.value);
-      soundMult = v / 100;
-      volValEl.textContent = v + '%';
-      localStorage.setItem('VENT_SOUND_MULT', String(v));
+    const apply = (next) => {
+      currentVol = Math.max(minVol, Math.min(maxVol, Math.round(Number(next) / stepVol) * stepVol));
+      soundMult = currentVol / 100;
+      volValEl.textContent = currentVol + '%';
+      localStorage.setItem('VENT_SOUND_MULT', String(currentVol));
       applyCustomSoundVolume_();
-    });
+      if (down) down.disabled = currentVol <= minVol;
+      if (up) up.disabled = currentVol >= maxVol;
+    };
+    bindHoldStepper_(down, -1, (dir)=>apply(currentVol + dir * stepVol));
+    bindHoldStepper_(up, 1, (dir)=>apply(currentVol + dir * stepVol));
+    apply(currentVol);
   }
 
 
@@ -3010,43 +3290,142 @@ window.guideSave = async function(){
     send();
   });
 
-  $('btnStart').addEventListener('click', ()=>{
-    markUserGesture();
-    playClickSound('start');
-    if (!sessionId) return;
-    google.script.run.withSuccessHandler(onPomState).startPomodoro(sessionId, CLIENT_ID);
-  });
+  function remainingNow_(){
+    if (pom && pom.isRunning && anchorRemainSec != null && anchorAtMs != null){
+      return Math.max(0, anchorRemainSec - Math.floor((Date.now() - anchorAtMs) / 1000));
+    }
+    return Math.max(0, Number(localRemaining || (pom && pom.remaining) || WORK_SEC));
+  }
 
-  $('btnPause').addEventListener('click', ()=>{
-    markUserGesture();
-    playClickSound('stop');
-    if (!sessionId) return;
-    google.script.run.withSuccessHandler(onPomState).pausePomodoro(sessionId, CLIENT_ID);
-  });
+  function optimisticPomState_(action){
+    const current = pom ? { ...pom } : {
+      isRunning:false, phase:'work', phaseSeconds:WORK_SEC, phaseStartMs:null, seq:0, remaining:localRemaining
+    };
+    const remain = remainingNow_();
+    if (action === 'start'){
+      return { ...current, isRunning:true, phaseSeconds:remain, phaseStartMs:Date.now(), remaining:remain };
+    }
+    if (action === 'pause'){
+      return { ...current, isRunning:false, phaseSeconds:remain, phaseStartMs:null, remaining:remain };
+    }
+    if (action === 'reset'){
+      return { isRunning:false, phase:'work', phaseSeconds:WORK_SEC, phaseStartMs:null, seq:0, remaining:WORK_SEC };
+    }
+    return current;
+  }
 
-  $('btnReset').addEventListener('click', ()=>{
-    markUserGesture();
-    if (!sessionId) return;
-    google.script.run.withSuccessHandler(onPomState).resetPomodoro(sessionId, CLIENT_ID);
-  });
+  function setControlButtonsPending_(activeBtn, on){
+    ['btnStart','btnPause','btnReset','btnClaim'].forEach((id)=>{
+      const btn = $(id);
+      if (!btn) return;
+      btn.classList.toggle('isPending', !!on && btn === activeBtn);
+      if (on) btn.disabled = true;
+    });
+    if (!on) renderTop();
+  }
 
-  $('btnClaim').addEventListener('click', ()=>{
+  async function runPomControl_(action, btn){
     markUserGesture();
-    if (!sessionId) return;
-    google.script.run.withSuccessHandler(res=>{
-      if (!res) return;
-      if (res.ok) {
-        iAmHost = true;
-        hostName = res.hostName || hostName;
-        renderTop();
-        return;
+    if (!sessionId || !iAmHost || controlBusy) return;
+    if (action === 'start') playClickSound('start');
+    else if (action === 'pause') playClickSound('stop');
+    else playClickSound('reset');
+
+    const requestId = ++controlRequestSeq;
+    const before = pom ? { ...pom } : null;
+    const optimistic = optimisticPomState_(action);
+    controlBusy = true;
+    setControlButtonsPending_(btn, true);
+    onPomState({ ok:true, ...optimistic }, { silent:true });
+
+    const fn = action === 'start' ? 'startPomodoro' : action === 'pause' ? 'pausePomodoro' : 'resetPomodoro';
+    try{
+      let res = await gasCallPromise_(fn, [sessionId, CLIENT_ID], 12000);
+      if (requestId !== controlRequestSeq) return;
+      if (res && res.busy){
+        await new Promise(r=>setTimeout(r, 280));
+        res = await gasCallPromise_(fn, [sessionId, CLIENT_ID], 12000);
       }
-      // ✅ 작업 중이어도 호스트 변경 가능 (서버 RUNNING 제한 제거됨)
-      if (res.reason === 'GRACE') { alert(`${res.waitSec}초 후 가능!`); return; }
-      const cur = res.hostName ? ` (현재 호스트: ${res.hostName})` : '';
-      alert('호스트 가져오기 실패' + cur);
-    }).claimHost(sessionId, CLIENT_ID, myName());
+      if (!res || res.ok === false){
+        if (res && res.reason === 'NOT_HOST'){
+          hostName = res.hostName || hostName;
+          iAmHost = false;
+        }
+        if (before) onPomState({ ok:true, ...before }, { silent:true });
+        throw new Error(res && res.reason ? res.reason : '서버 응답 없음');
+      }
+      hostName = res.hostName || hostName;
+      if (res.hostClientId) iAmHost = String(res.hostClientId) === CLIENT_ID;
+      onPomState(res, { silent:true });
+      renderTop();
+      fbBroadcastControl_(res, action);
+    }catch(e){
+      if (before) onPomState({ ok:true, ...before }, { silent:true });
+      renderTop();
+      showOverlay('뽀모 반영이 늦어졌어', '서버 연결이 잠깐 지연됐어요. 화면은 원래 상태로 돌렸고, 잠시 후 다시 눌러줘!');
+    }finally{
+      if (requestId === controlRequestSeq){
+        controlBusy = false;
+        setControlButtonsPending_(btn, false);
+        pingBackoff = 0;
+        schedulePing_();
+      }
+    }
+  }
+
+  $('btnStart').addEventListener('click', ()=>runPomControl_('start', $('btnStart')));
+  $('btnPause').addEventListener('click', ()=>runPomControl_('pause', $('btnPause')));
+  $('btnReset').addEventListener('click', ()=>runPomControl_('reset', $('btnReset')));
+
+  $('btnClaim').addEventListener('click', async ()=>{
+    markUserGesture();
+    if (!sessionId || controlBusy) return;
+    const btn = $('btnClaim');
+    const prev = { hostName, iAmHost };
+    const requestId = ++controlRequestSeq;
+    controlBusy = true;
+    setControlButtonsPending_(btn, true);
+    // TAKEOVER_GRACE_SEC=0이므로 먼저 화면에 반영하고 실패 시만 복구
+    hostName = myName() || '익명';
+    iAmHost = true;
+    renderTop();
+
+    try{
+      let res = await gasCallPromise_('claimHost', [sessionId, CLIENT_ID, myName()], 12000);
+      if (requestId !== controlRequestSeq) return;
+      if (res && res.busy){
+        await new Promise(r=>setTimeout(r, 280));
+        res = await gasCallPromise_('claimHost', [sessionId, CLIENT_ID, myName()], 12000);
+      }
+      if (!res || !res.ok){
+        hostName = prev.hostName;
+        iAmHost = prev.iAmHost;
+        if (res && res.reason === 'GRACE') {
+          alert(`${res.waitSec}초 후 가능!`);
+          return;
+        }
+        throw new Error(res && res.reason ? res.reason : '호스트 변경 실패');
+      }
+      hostName = res.hostName || myName() || hostName;
+      iAmHost = true;
+      if (res.phase || res.remaining != null) onPomState(res, { silent:true });
+      renderTop();
+      fbBroadcastControl_(res, 'claim');
+    }catch(e){
+      hostName = prev.hostName;
+      iAmHost = prev.iAmHost;
+      renderTop();
+      showOverlay('호스트를 가져오지 못했어', '서버 연결이 잠깐 지연됐어요. 잠시 후 다시 눌러줘!');
+    }finally{
+      if (requestId === controlRequestSeq){
+        controlBusy = false;
+        setControlButtonsPending_(btn, false);
+        pingBackoff = 0;
+        schedulePing_();
+      }
+    }
   });
+
 
   function chooseCustomSoundFile_(phase){
     soundPickerTarget = normalizeSoundPhase_(phase);
@@ -3061,9 +3440,13 @@ window.guideSave = async function(){
       showOverlay('알림이 꺼져 있어요', '먼저 “🔊 알림” 버튼으로 알림음을 켠 뒤 미리 들어볼 수 있어!');
       return;
     }
-    const played = await playCustomSound_(normalized, 12 * 1000);
+    userGestured = true;
+    const ready = await ensureAudio_();
+    if (ready) await startAudioKeepAlive_();
+    const played = ready && await playCustomSound_(normalized, 12 * 1000);
     if (!played) {
-      showOverlay('미리 듣기를 시작하지 못했어', '브라우저가 소리 재생을 막은 것 같아. 페이지 아무 곳이나 한 번 클릭한 뒤 다시 눌러줘!');
+      const detail = lastAudioError ? ` (${lastAudioError})` : '';
+      showOverlay('미리 듣기를 시작하지 못했어', `오디오를 다시 준비했지만 재생하지 못했어요${detail}. MP3 파일을 다시 선택하거나 앱을 완전히 닫았다가 열어줘!`);
     }
   }
 
@@ -3125,9 +3508,10 @@ window.guideSave = async function(){
       await customSoundDbPut_(CUSTOM_SOUND_KEYS[phase], record);
       customSoundStorageAvailable = true;
       applyCustomSoundRecord_(phase, record);
-      await primeCustomSound_(phase);
+      const decoded = await primeCustomSound_(phase);
+      if (!decoded) throw new Error(lastAudioError || 'MP3 디코딩 실패');
       showOverlay(`${soundPhaseLabel_(phase)} 알림음 설정 완료 🎵`, `“${record.name}” 파일을 이 브라우저에만 저장했어.
-다음 ${soundPhaseLabel_(phase)}부터 이 소리가 울려!`);
+미리 듣기 버튼으로 바로 확인할 수 있고, 다음 ${soundPhaseLabel_(phase)}부터 이 소리가 울려!`);
     }catch(err){
       customSoundStorageAvailable = false;
       updateCustomSoundUI_(phase);
@@ -3248,7 +3632,14 @@ window.guideSave = async function(){
   })();
 
   document.addEventListener('visibilitychange', ()=>{
+    if (!document.hidden && userGestured && soundEnabled){
+      ensureAudio_().then((ready)=>{ if (ready) startAudioKeepAlive_(); }).catch(()=>{});
+      if (iAmHost) syncPom();
+    }
     schedulePing_();
+  });
+  window.addEventListener('pageshow', ()=>{
+    if (userGestured && soundEnabled) ensureAudio_().then((ready)=>{ if (ready) startAudioKeepAlive_(); }).catch(()=>{});
   });
 
   // =====================

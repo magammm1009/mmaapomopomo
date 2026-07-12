@@ -1,7 +1,7 @@
 // 마끝마 뽀모 PWA Service Worker
-// v3.1.0 — 접속자 표시 기준 통일 패치
+// v3.2.0 — 알림음 안정화 + 세부 조절 + 실시간 제어 패치
 
-const CACHE_NAME = 'pomo-github-standalone-v3-20260709-presence-v4';
+const CACHE_NAME = 'pomo-github-standalone-v3-2-20260712-audio-control-v1';
 const STATIC_ASSETS = [
   './offline.html',
   './manifest.webmanifest',
