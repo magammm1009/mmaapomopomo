@@ -1,7 +1,7 @@
 // 마끝마 뽀모 PWA Service Worker
-// v3.2.0 — 알림음 안정화 + 세부 조절 + 실시간 제어 패치
+// v3.2.1 — 볼륨 1% / 채팅창 높이 1px 세부 조절 패치
 
-const CACHE_NAME = 'pomo-github-standalone-v3-2-20260712-audio-control-v1';
+const CACHE_NAME = 'pomo-github-standalone-v3-2-1-20260712-fine-step-v1';
 const STATIC_ASSETS = [
   './offline.html',
   './manifest.webmanifest',
