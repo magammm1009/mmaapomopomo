@@ -10,11 +10,11 @@
   <link rel="manifest" href="./manifest.webmanifest" />
   <link rel="icon" href="./icons/icon-192.png" />
   <link rel="apple-touch-icon" href="./icons/icon-192.png" />
-  <script src="./config.js?v=20260712-github-standalone-v3-2-audio-control"></script>
+  <script src="./config.js?v=20260712-github-standalone-v3-2-1-fine-step"></script>
   <script>
   (function(){
     'use strict';
-    const VERSION = 'github-standalone-v3.2-20260712';
+    const VERSION = 'github-standalone-v3.2.1-20260712';
     const cfg = window.POMO_APP_CONFIG || {};
     const endpoint = String(cfg.POMO_APP_URL || '').trim();
     const isMissing = !endpoint || endpoint.includes('여기에_Apps_Script') || endpoint.includes('YOUR_');
@@ -974,7 +974,7 @@
               <div class="stepperReadout" id="soundVolVal" aria-live="polite">150%</div>
               <button class="stepperBtn" id="soundVolUp" type="button" aria-label="볼륨 높이기">＋</button>
             </div>
-            <div class="stepperHint">한 번에 5% · 길게 누르면 연속 조절</div>
+            <div class="stepperHint">한 번에 1% · 길게 누르면 연속 조절</div>
           </div>
 
           <div class="menuSliderBlock">
@@ -986,7 +986,7 @@
               <div class="stepperReadout" id="logSizeVal" aria-live="polite">260px</div>
               <button class="stepperBtn" id="logSizeUp" type="button" aria-label="채팅창 높이기">＋</button>
             </div>
-            <div class="stepperHint">한 번에 10px · 길게 누르면 연속 조절</div>
+            <div class="stepperHint">한 번에 1px · 길게 누르면 연속 조절</div>
           </div>
         </div>
       </div>
@@ -3182,7 +3182,7 @@ window.guideSave = async function(){
     const up = $('logSizeUp');
     const minH = 180;
     const maxH = 1000;
-    const stepH = 10;
+    const stepH = 1;
     const saved = Number(localStorage.getItem('VENT_LOG_H') || 260);
     let currentH = (saved >= minH && saved <= maxH) ? saved : 260;
 
@@ -3209,7 +3209,7 @@ window.guideSave = async function(){
     const volValEl = $('soundVolVal');
     const minVol = 50;
     const maxVol = 800;
-    const stepVol = 5;
+    const stepVol = 1;
     const savedVol = Number(localStorage.getItem('VENT_SOUND_MULT') || 150);
     let currentVol = (savedVol >= minVol && savedVol <= maxVol) ? savedVol : 150;
 
