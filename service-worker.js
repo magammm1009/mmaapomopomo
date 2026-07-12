@@ -1,7 +1,7 @@
 // 마끝마 뽀모 PWA Service Worker
-// v3.2.1 — 볼륨 1% / 채팅창 높이 1px 세부 조절 패치
+// v3.2.4 — 이벤트형 접속자(입장/퇴장/onDisconnect) 패치
 
-const CACHE_NAME = 'pomo-github-standalone-v3-2-1-20260712-fine-step-v1';
+const CACHE_NAME = 'pomo-github-standalone-v3-2-4-20260712-event-presence-v1';
 const STATIC_ASSETS = [
   './offline.html',
   './manifest.webmanifest',

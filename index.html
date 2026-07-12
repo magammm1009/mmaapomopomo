@@ -10,11 +10,11 @@
   <link rel="manifest" href="./manifest.webmanifest" />
   <link rel="icon" href="./icons/icon-192.png" />
   <link rel="apple-touch-icon" href="./icons/icon-192.png" />
-  <script src="./config.js?v=20260712-github-standalone-v3-2-1-fine-step"></script>
+  <script src="./config.js?v=20260712-github-standalone-v3-2-4-event-presence"></script>
   <script>
   (function(){
     'use strict';
-    const VERSION = 'github-standalone-v3.2.1-20260712';
+    const VERSION = 'github-standalone-v3.2.4-event-presence-20260712';
     const cfg = window.POMO_APP_CONFIG || {};
     const endpoint = String(cfg.POMO_APP_URL || '').trim();
     const isMissing = !endpoint || endpoint.includes('여기에_Apps_Script') || endpoint.includes('YOUR_');
@@ -1074,10 +1074,11 @@
 
 <script>
   // =====================
-  // v43: 접속자(Firebase presence) 안정화 + 호스트/뽀모 흔들림(중복 ping) 제거
-  // - 채팅: Firebase 실시간
-  // - 기록/명령/뽀모/호스트: Apps Script(서버) 단일 소스
-  // - 접속자 목록: Firebase presence (stale/중복 닉네임 정리)
+  // v3.2.4: 이벤트형 접속자
+  // - 닉네임이 설정된 앱 입장: 즉시 online 등록
+  // - background: 접속 유지(heartbeat로 접속 여부를 판단하지 않음)
+  // - 퇴장/창 종료/Firebase onDisconnect: 즉시 offline 정리
+  // - 기록/명령/뽀모/호스트: Apps Script 서버 유지
   // =====================
 
   const WORK_SEC = 25 * 60;
@@ -1097,11 +1098,11 @@
   let activeCount = 0;
   let activeNames = [];
 
-  // ✅ V4: 접속자 표시 기준 통일
-  // - 화면 상단/목록은 Apps Script 서버 presence(joinOrPing/getActiveUsers)를 우선 사용
-  // - Firebase presence는 서버 응답이 아직 없을 때만 임시 fallback
+  // ✅ 접속자 표시 기준
+  // - Firebase connection/onDisconnect snapshot이 화면의 실시간 원본
+  // - Apps Script presence는 작업방 대시보드 API와 호스트 관리용 복제본
   let serverPresenceAt = 0;
-  const SERVER_PRESENCE_FRESH_MS = 45000;
+  let firebasePresenceReady = false;
   let hostName = '-';
   let iAmHost = false;
   let isStopped = false;
@@ -1112,8 +1113,15 @@
 
   // Presence
   let presenceStarted = false;
-  let presenceTimer = null;
   let presenceUid = null;
+  let presenceConnRef = null;
+  let presenceConnectionUnsub = null;
+  let presenceRegistering = false;
+  let presenceRegisteredOnServer = false;
+  let presenceLeaving = false;
+  let presenceSnapshotSyncTimer = null;
+  let lastPresenceSnapshotHash = '';
+  let presenceNameSyncTimer = null;
 
   // 명령 처리 큐
   const cmdQueue_ = [];
@@ -1339,11 +1347,11 @@
   }
 
   function hasFreshServerPresence_(){
-    return serverPresenceAt && ((Date.now() - serverPresenceAt) < SERVER_PRESENCE_FRESH_MS);
+    return !!serverPresenceAt;
   }
 
   function applyServerPresence_(res){
-    if (!res) return false;
+    if (!res || firebasePresenceReady) return false;
 
     const nestedPomo = (res && typeof res.pomo === 'object') ? res.pomo : null;
     const names = normalizeActiveNames_(res.activeNames || (nestedPomo && nestedPomo.activeNames));
@@ -1888,42 +1896,73 @@ window.guideSave = async function(){
 };
 
   // =====================
-  // Presence (접속자) - Firebase 기반 (멀티 탭/기기 안정)
-  // - uid 아래에 connection(connId)들을 쌓고, 각 연결만 onDisconnect로 제거
-  //   => 한 사람이 탭을 여러 개 열어도 목록이 튀거나 사라지지 않음
+  // Presence (접속자) — 이벤트형 / Firebase connection 원본
+  // - 입장 시 connection node 1회 등록
+  // - background에서는 아무 것도 제거하지 않음
+  // - 실제 연결 종료는 onDisconnect가 서버에서 제거
+  // - 별도 heartbeat/stale 45초 판정 없음
   // =====================
   let presenceConnKey = null;
-
-  // 실시간 접속자 리스트(딜레이 최소화)
   let presenceLiveUnsub = null;
   let presenceLiveRoomId = null;
   let presenceLiveVal = null;
   let presenceLiveAt = 0;
 
-  // onDisconnect가 못 잡는 예외(브라우저 강제종료/백그라운드) 대비용
-  const PRESENCE_STALE_MS = 45000;
-
   function computePresenceFromConn_(val){
-    const now = Date.now();
-    const items = [];
     const obj = val || {};
+    const byClient = new Map();
+
     for (const uid of Object.keys(obj)){
       const conns = obj[uid] || {};
-      let best = null;
-      for (const cid of Object.keys(conns)){
-        const v = conns[cid];
-        if (!v || !v.ts) continue;
-        const ts = Number(v.ts);
-        if (!Number.isFinite(ts)) continue;
-        if ((now - ts) > PRESENCE_STALE_MS) continue;
-        if (!best || ts > best.ts){
-          best = { uid, name: String(v.name || '익명').trim().slice(0,12), ts };
-        }
+      for (const connKey of Object.keys(conns)){
+        const v = conns[connKey];
+        if (!v) continue;
+        const clientId = String(v.cid || uid || '').trim();
+        if (!clientId) continue;
+        const joinedAt = Number(v.joinedAt || v.ts || 0);
+        const item = {
+          uid,
+          clientId,
+          name: String(v.name || '익명').trim().slice(0,12) || '익명',
+          ts: joinedAt
+        };
+        const prev = byClient.get(clientId);
+        if (!prev || item.ts >= prev.ts) byClient.set(clientId, item);
       }
-      if (best) items.push(best);
     }
+
+    const items = Array.from(byClient.values());
     const dis = _disambiguateNames_(items);
-    return { count: dis.length, names: dis };
+    const entries = items
+      .map(it => ({ clientId: it.clientId, name: it.name }))
+      .sort((a,b)=>a.clientId.localeCompare(b.clientId));
+    return { count: entries.length, names: dis.sort((a,b)=>a.localeCompare(b,'ko')), entries };
+  }
+
+  function schedulePresenceSnapshotSync_(entries){
+    const clean = Array.isArray(entries)
+      ? entries
+          .map(it=>({ clientId:String(it && it.clientId || '').trim(), name:String(it && it.name || '').trim().slice(0,12) || '익명' }))
+          .filter(it=>it.clientId)
+          .sort((a,b)=>a.clientId.localeCompare(b.clientId))
+      : [];
+
+    // 현재 접속자 중 clientId가 가장 앞선 한 기기만 서버 복제본을 갱신
+    if (!clean.length || clean[0].clientId !== CLIENT_ID || presenceLeaving) return;
+    const hash = JSON.stringify(clean);
+    if (hash === lastPresenceSnapshotHash) return;
+    lastPresenceSnapshotHash = hash;
+
+    if (presenceSnapshotSyncTimer) clearTimeout(presenceSnapshotSyncTimer);
+    presenceSnapshotSyncTimer = setTimeout(async ()=>{
+      try{
+        const res = await gasCallPromise_('syncPresenceSnapshot', [clean], 10000);
+        if (!firebasePresenceReady) applyServerPresence_(res);
+      }catch(e){
+        // Firebase 화면 원본은 이미 정상이라 서버 복제 실패가 UI를 0명으로 만들지 않음
+        lastPresenceSnapshotHash = '';
+      }
+    }, 350);
   }
 
   function startPresenceLive_(roomId){
@@ -1939,15 +1978,13 @@ window.guideSave = async function(){
       presenceLiveUnsub = window.FB.onValue(root, (snap)=>{
         presenceLiveVal = snap.exists() ? (snap.val() || {}) : {};
         presenceLiveAt = Date.now();
+        firebasePresenceReady = true;
 
         const r = computePresenceFromConn_(presenceLiveVal);
-        // ✅ 서버/API presence가 최신이면 앱 화면도 그 값을 우선 표시한다.
-        // Firebase presence는 첫 응답 전/오류 상황에서만 fallback으로 사용.
-        if (!hasFreshServerPresence_()){
-          activeCount = r.count;
-          activeNames = r.names;
-          renderTop();
-        }
+        activeCount = r.count;
+        activeNames = r.names;
+        renderTop();
+        schedulePresenceSnapshotSync_(r.entries);
       }, (err)=>{
         console.warn('presence onValue error', err);
       });
@@ -1957,168 +1994,128 @@ window.guideSave = async function(){
   }
 
   function stopPresenceLive_(){
-    try{
-      if (presenceLiveUnsub) presenceLiveUnsub();
-    }catch(e){}
+    try{ if (presenceLiveUnsub) presenceLiveUnsub(); }catch(e){}
     presenceLiveUnsub = null;
     presenceLiveRoomId = null;
     presenceLiveVal = null;
     presenceLiveAt = 0;
+    firebasePresenceReady = false;
+  }
+
+  async function registerFirebaseConnection_(){
+    if (!presenceStarted || presenceLeaving || presenceRegistering || !sessionId || !presenceUid) return;
+    presenceRegistering = true;
+    try{
+      const roomId = String(sessionId);
+      const nm = String(myName()).trim().slice(0,12) || '익명';
+
+      const nameRef = window.FB.ref(window.FB.db, `${fbPresenceNamePath_(roomId)}/${presenceUid}`);
+      try{ await window.FB.set(nameRef, { name: nm, ts: Date.now(), cid: CLIENT_ID }); }catch(e){}
+
+      const connRoot = window.FB.ref(window.FB.db, `${fbPresenceConnPath_(roomId)}/${presenceUid}`);
+      const connRef = window.FB.push(connRoot);
+      presenceConnRef = connRef;
+      presenceConnKey = connRef.key;
+
+      try{ await window.FB.onDisconnect(connRef).remove(); }catch(e){}
+      await window.FB.set(connRef, {
+        name: nm,
+        joinedAt: Date.now(),
+        ts: Date.now(),
+        cid: CLIENT_ID,
+        mode: 'event'
+      });
+    }catch(e){
+      console.warn('registerFirebaseConnection failed', e);
+    }finally{
+      presenceRegistering = false;
+    }
   }
 
   async function startPresence_(){
-    if (presenceStarted) return;
-    if (!sessionId) return;
-
+    if (presenceStarted || !sessionId || presenceLeaving) return;
     try{
       await fbEnsureReady_();
       const user = window.FB.auth.currentUser;
       if (!user) return;
 
       presenceUid = user.uid;
-      const roomId = String(sessionId);
-      const nm = String(myName()).trim().slice(0,12) || '익명';
-
-      // 이름 저장(참고용)
-      const nameRef = window.FB.ref(window.FB.db, `${fbPresenceNamePath_(roomId)}/${presenceUid}`);
-      try{ await window.FB.set(nameRef, { name: nm, ts: Date.now() }); }catch(e){}
-
-      // 연결 노드: uid 아래 push로 connId 생성
-      const connRoot = window.FB.ref(window.FB.db, `${fbPresenceConnPath_(roomId)}/${presenceUid}`);
-      const connRef = window.FB.push(connRoot);
-      presenceConnKey = connRef.key;
-
-      // 이 연결이 끊기면 이 connId만 제거
-      try{ window.FB.onDisconnect(connRef).remove(); }catch(e){}
-
-      // 최초 등록
-      await window.FB.set(connRef, {
-        name: nm,
-        ts: Date.now(),
-        cid: CLIENT_ID
-      });
-
-      // 하트비트
-      presenceTimer = setInterval(async ()=>{
-        try{
-          const nm2 = String(myName()).trim().slice(0,12) || '익명';
-          await window.FB.update(connRef, { name: nm2, ts: Date.now() });
-          // nameRef도 가끔 갱신
-          if (Math.random() < 0.35) await window.FB.update(nameRef, { name: nm2, ts: Date.now() });
-        }catch(e){}
-      }, 15000);
-
-      // 실시간 구독 시작(들어옴/나감 거의 즉시 반영)
-      startPresenceLive_(roomId);
-
       presenceStarted = true;
+      startPresenceLive_(String(sessionId));
 
+      // 네트워크가 실제로 재연결될 때 connection node를 다시 생성.
+      // background 타이머/heartbeat와 무관하게 Firebase 연결 이벤트만 사용합니다.
+      const connectedRef = window.FB.ref(window.FB.db, '.info/connected');
+      presenceConnectionUnsub = window.FB.onValue(connectedRef, (snap)=>{
+        const connected = snap.val() === true;
+        if (!connected){
+          presenceConnRef = null;
+          presenceConnKey = null;
+          return;
+        }
+        registerFirebaseConnection_();
+      });
     }catch(e){
+      presenceStarted = false;
       console.warn('startPresence failed', e);
     }
   }
 
   async function stopPresence_(){
+    presenceLeaving = true;
+    try{ if (presenceSnapshotSyncTimer) clearTimeout(presenceSnapshotSyncTimer); }catch(e){}
+    presenceSnapshotSyncTimer = null;
+    try{ if (presenceConnectionUnsub) presenceConnectionUnsub(); }catch(e){}
+    presenceConnectionUnsub = null;
+
     try{
-      if (presenceTimer) clearInterval(presenceTimer);
-      presenceTimer = null;
-      if (!presenceStarted) return;
-      await fbEnsureReady_();
-      if (!presenceUid || !sessionId || !presenceConnKey) return;
-      const roomId = String(sessionId);
-      const connRef = window.FB.ref(window.FB.db, `${fbPresenceConnPath_(roomId)}/${presenceUid}/${presenceConnKey}`);
-      await window.FB.remove(connRef);
+      if (presenceConnRef) await window.FB.remove(presenceConnRef);
     }catch(e){}
+    presenceConnRef = null;
+    presenceConnKey = null;
     presenceStarted = false;
-    // 구독 해제(탭 전환/룸 전환 시 누수 방지)
     stopPresenceLive_();
   }
 
   function _disambiguateNames_(items){
-    // 같은 닉네임이 여러 uid에 걸리면 uid 꼬리로 구분
     const counts = {};
-    for (const it of items){
-      counts[it.name] = (counts[it.name]||0) + 1;
-    }
+    for (const it of items){ counts[it.name] = (counts[it.name]||0) + 1; }
     return items.map(it=>{
       if ((counts[it.name]||0) <= 1) return it.name;
-      return `${it.name}·${String(it.uid).slice(-4)}`;
+      return `${it.name}·${String(it.clientId || it.uid || '').slice(-4)}`;
     });
   }
 
   async function refreshPresenceList_(){
-    // 목록은 필요할 때만 1회 GET (버튼 클릭/상단 숫자 업데이트)
-    if (!sessionId) return { count: 0, names: [] };
-
-    // 실시간 캐시가 있으면 우선 사용(버튼 클릭 시 즉시 반영)
-    if (presenceLiveVal){
-      return computePresenceFromConn_(presenceLiveVal);
-    }
+    if (!sessionId) return { count: 0, names: [], entries: [] };
+    if (presenceLiveVal) return computePresenceFromConn_(presenceLiveVal);
     try{
       await fbEnsureReady_();
-      const roomId = String(sessionId);
-      const root = window.FB.ref(window.FB.db, fbPresenceConnPath_(roomId));
+      const root = window.FB.ref(window.FB.db, fbPresenceConnPath_(String(sessionId)));
       const snap = await window.FB.get(root);
-      const now = Date.now();
       const val = snap.exists() ? (snap.val() || {}) : {};
-
-      // uid별로 살아있는 conn 하나라도 있으면 online
-      const pick = [];
-      for (const uid of Object.keys(val)){
-        const conns = val[uid] || {};
-        let best = null;
-        for (const cid of Object.keys(conns)){
-          const v = conns[cid];
-          if (!v || !v.ts) continue;
-          const ts = Number(v.ts);
-          // 60초 이상 갱신 없으면 stale
-          if ((now - ts) > 60000) continue;
-          if (!best || ts > best.ts){
-            best = { uid, name: String(v.name||'익명').trim().slice(0,12), ts };
-          }
-        }
-        if (best) pick.push(best);
-      }
-
-      // 보기용 닉네임(중복 구분)
-      const displayNames = _disambiguateNames_(pick);
-      // 정렬
-      const names = displayNames.sort((a,b)=>a.localeCompare(b,'ko'));
-      return { count: pick.length, names };
+      return computePresenceFromConn_(val);
     }catch(e){
-      return { count: activeCount || 0, names: activeNames || [] };
+      return { count: activeCount || 0, names: activeNames || [], entries: [] };
     }
   }
 
   async function openOnlineList(){
     markUserGesture();
-
-    // 실시간 구독이 켜져 있으면(대부분) 즉시 목록이 준비됨
     try{ if (sessionId) await startPresence_(); }catch(e){}
 
-    // ✅ 접속자 목록도 대시보드 API와 같은 Apps Script 서버 presence를 우선 사용
-    //    (GitHub 독립 후 Firebase presence와 서버 presence가 갈라져 숫자가 달라지는 문제 방지)
-    let usedServerPresence = false;
-    try{
-      const server = await getActiveUsersServer_();
-      usedServerPresence = applyServerPresence_(server);
-    }catch(e){
-      usedServerPresence = false;
-    }
-
-    if (!usedServerPresence){
-      // 서버 호출 실패 때만 Firebase presence fallback
-      if (!presenceLiveVal){
-        const r = await refreshPresenceList_();
-        activeCount = r.count;
-        activeNames = r.names;
-      }else{
-        const r = computePresenceFromConn_(presenceLiveVal);
-        activeCount = r.count;
-        activeNames = r.names;
+    if (firebasePresenceReady || presenceLiveVal){
+      const r = computePresenceFromConn_(presenceLiveVal || {});
+      activeCount = r.count;
+      activeNames = r.names;
+    }else{
+      const r = await refreshPresenceList_();
+      activeCount = r.count;
+      activeNames = r.names;
+      if (!r.entries.length){
+        try{ applyServerPresence_(await getActiveUsersServer_()); }catch(e){}
       }
     }
-
     renderTop();
 
     const list = activeNames || [];
@@ -2466,62 +2463,53 @@ window.guideSave = async function(){
     pingTimer = setTimeout(()=>{ joinOrPing_(); }, Math.min(30000, Math.max(1500, nextPingMs_() + pingBackoff)));
   }
 
-  function joinOrPing_(){
+  async function joinOrPing_(){
     if (isStopped) return;
     if (controlBusy) { schedulePing_(); return; }
 
-    google.script.run
-      .withSuccessHandler(async (res) => {
-        if (!res) { schedulePing_(); return; }
-        if (res.ok === false && res.reason === 'SESSION_CHANGED') { handleSessionEnded(); return; }
+    try{
+      const fnName = presenceRegisteredOnServer ? 'joinOrPing' : 'enterPresence';
+      let res;
+      try{
+        res = await gasCallPromise_(fnName, [CLIENT_ID, myName()], 12000);
+      }catch(firstErr){
+        // 서버 배포 전환 순간에는 구버전 joinOrPing으로 한 번만 안전 fallback
+        if (fnName !== 'enterPresence') throw firstErr;
+        res = await gasCallPromise_('joinOrPing', [CLIENT_ID, myName()], 12000);
+      }
 
-        if (!sessionId && res.sessionId) {
-          sessionId = res.sessionId;
-        } else if (sessionId && res.sessionId && res.sessionId !== sessionId) {
-          // ✅ 자정 등으로 세션이 변경됨 → 새로고침으로 안전하게 재연결
-          stopAll();
-          showOverlay('세션이 갱신됐어요', '세션이 새로 열렸어요. 잠시 후 자동으로 재연결할게요.');
-          setTimeout(()=>{ try{ location.reload(); } catch(e){} }, 1800);
-          return;
-        }
+      if (!res) { schedulePing_(); return; }
+      if (res.ok === false && res.reason === 'SESSION_CHANGED') { handleSessionEnded(); return; }
+      presenceRegisteredOnServer = true;
 
-        // ✅ 세션이 바뀐 경우
+      if (!sessionId && res.sessionId) {
+        sessionId = res.sessionId;
+      } else if (sessionId && res.sessionId && res.sessionId !== sessionId) {
+        stopAll();
+        showOverlay('세션이 갱신됐어요', '세션이 새로 열렸어요. 잠시 후 자동으로 재연결할게요.');
+        setTimeout(()=>{ try{ location.reload(); } catch(e){} }, 1800);
+        return;
+      }
 
-        // 서버 정보 반영
-        hostName = res.hostName || hostName;
-        iAmHost = !!res.iAmHost;
-        applyServerPresence_(res);
+      hostName = res.hostName || hostName;
+      iAmHost = !!res.iAmHost;
+      if (!firebasePresenceReady) applyServerPresence_(res);
+      if (res.pom) onPomState({ ok:true, ...res.pom });
 
-        // 뽀모 상태 반영
-        if (res.pom) onPomState({ ok:true, ...res.pom });
+      if (sessionId){
+        initFirebaseChat_(sessionId);
+        await startPresence_();
+        initNotice_(sessionId);
+        initGuide_(sessionId);
+      }
 
-        // Firebase 채팅/프레즌스 시작
-        if (sessionId){
-          initFirebaseChat_(sessionId);
-          await startPresence_();
-          // ✅ 공지 구독(접속 시 자동 팝업)
-          initNotice_(sessionId);
-      initGuide_(sessionId);
-          // 상단 접속자 숫자는 서버 응답(joinOrPing)을 기준으로 표시.
-          // 서버 presence가 아직 없거나 오래된 경우에만 Firebase fallback을 드물게 사용.
-          if (!hasFreshServerPresence_() && !document.hidden && Math.random() < 0.35){
-            const r = await refreshPresenceList_();
-            activeCount = r.count;
-            activeNames = r.names;
-          }
-        }
-
-        renderTop();
-
-        // backoff 조정
-        pingBackoff = res.busy ? Math.min(15000, pingBackoff + 1200) : Math.max(0, pingBackoff - 900);
-        schedulePing_();
-      })
-      .withFailureHandler(() => {
-        pingBackoff = Math.min(15000, pingBackoff + 1800);
-        schedulePing_();
-      })
-      .joinOrPing(CLIENT_ID, myName());
+      renderTop();
+      pingBackoff = res.busy ? Math.min(15000, pingBackoff + 1200) : Math.max(0, pingBackoff - 900);
+    }catch(e){
+      pingBackoff = Math.min(15000, pingBackoff + 1800);
+    }finally{
+      schedulePing_();
+    }
   }
 
   // =====================
@@ -3559,26 +3547,17 @@ window.guideSave = async function(){
   $('btnLeave').addEventListener('click', async ()=>{
     markUserGesture();
     $('btnLeave').disabled = true;
-
-    if (!sessionId) {
-      stopAll();
-      showOverlay('나갔어요', '이미 세션이 없거나 종료된 상태.');
-      return;
-    }
-
-    const sid = sessionId;
     stopAll();
     await stopPresence_();
 
-    google.script.run
-      .withSuccessHandler((res) => {
-        if (res && res.ended) showOverlay('세션 종료', '마지막 접속자라서 세션이 닫혔어요!');
-        else showOverlay('나갔어요', '안녕! 창을 닫아도 돼요 😊');
-      })
-      .withFailureHandler(() => {
-        showOverlay('나갔어요', '안녕! (서버 통신이 끊겨도 로컬은 종료했어요)');
-      })
-      .leaveSession(sid, CLIENT_ID);
+    try{
+      const res = await gasCallPromise_('leavePresence', [CLIENT_ID], 10000);
+      if (res) applyServerPresence_(res);
+      showOverlay('나갔어요', '접속자 목록에서 바로 제외됐어요. 안녕! 😊');
+    }catch(e){
+      sendPresenceLeaveBeacon_();
+      showOverlay('나갔어요', '화면에서는 퇴장했어요. 서버 정리는 백그라운드로 한 번 더 요청했어요.');
+    }
   });
 
   $('btnOnline').addEventListener('click', openOnlineList);
@@ -3631,6 +3610,29 @@ window.guideSave = async function(){
     });
   })();
 
+  function sendPresenceLeaveBeacon_(){
+    if (!presenceRegisteredOnServer) return;
+    const cfg = window.POMO_APP_CONFIG || {};
+    const endpoint = String(cfg.POMO_APP_URL || '').trim();
+    if (!endpoint) return;
+    presenceRegisteredOnServer = false;
+
+    const payload = JSON.stringify({ action:'presence-leave', clientId:CLIENT_ID, at:Date.now() });
+    try{
+      if (navigator.sendBeacon) {
+        navigator.sendBeacon(endpoint, new Blob([payload], { type:'text/plain;charset=UTF-8' }));
+      }
+    }catch(e){}
+
+    // Apps Script redirect/브라우저별 Beacon 차이를 위한 idempotent keepalive GET 안전판
+    try{
+      const sep = endpoint.includes('?') ? '&' : '?';
+      fetch(endpoint + sep + 'api=presence-leave&clientId=' + encodeURIComponent(CLIENT_ID) + '&_t=' + Date.now(), {
+        method:'GET', mode:'no-cors', cache:'no-store', keepalive:true
+      }).catch(()=>{});
+    }catch(e){}
+  }
+
   document.addEventListener('visibilitychange', ()=>{
     if (!document.hidden && userGestured && soundEnabled){
       ensureAudio_().then((ready)=>{ if (ready) startAudioKeepAlive_(); }).catch(()=>{});
@@ -3651,14 +3653,27 @@ window.guideSave = async function(){
 
     $('user').addEventListener('input', async ()=>{
       localStorage.setItem('VENT_NAME_V2', myName());
-      // presence 이름도 따라갱신
+      const nm = String(myName()).trim().slice(0,12) || '익명';
+
       if (presenceStarted && sessionId && presenceUid){
         try{
           await fbEnsureReady_();
           const nameRef = window.FB.ref(window.FB.db, `${fbPresenceNamePath_(String(sessionId))}/${presenceUid}`);
-          await window.FB.update(nameRef, { name: String(myName()).trim().slice(0,12) || '익명', ts: Date.now() });
+          await window.FB.update(nameRef, { name:nm, ts:Date.now(), cid:CLIENT_ID });
+          if (presenceConnRef) await window.FB.update(presenceConnRef, { name:nm });
         }catch(e){}
       }
+
+      // 타이핑마다 서버를 부르지 않고 입력이 멈춘 뒤 이벤트형 이름만 갱신
+      if (presenceNameSyncTimer) clearTimeout(presenceNameSyncTimer);
+      presenceNameSyncTimer = setTimeout(async ()=>{
+        if (isStopped || presenceLeaving) return;
+        try{
+          const res = await gasCallPromise_('enterPresence', [CLIENT_ID, nm], 10000);
+          presenceRegisteredOnServer = true;
+          if (!firebasePresenceReady) applyServerPresence_(res);
+        }catch(e){}
+      }, 650);
     });
 
     initLogSizer();
@@ -3678,9 +3693,11 @@ window.guideSave = async function(){
     // 2) 타이머 로컬 tick
     setInterval(()=>{ if(!isStopped) tick(); }, 1000);
 
-    // 3) 페이지 종료 시 presence 정리(best effort)
+    // 3) 실제 창/탭 종료 시만 offline 처리. visibility hidden(background)은 유지합니다.
     window.addEventListener('beforeunload', () => {
-      try{ stopPresence_(); }catch(e){}
+      presenceLeaving = true;
+      try{ if (presenceConnRef) window.FB.remove(presenceConnRef); }catch(e){}
+      sendPresenceLeaveBeacon_();
     });
   });
 
