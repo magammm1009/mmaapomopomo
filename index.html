@@ -1,5 +1,5 @@
 <!doctype html>
-<!-- POMO GitHub standalone v4.4 / 2026-08-01 / 상시 세션·KST 자정 채팅 분리 -->
+<!-- POMO GitHub standalone v4.4.1 / 2026-08-01 / 느린 서버 기동 복구 -->
 <html>
 <head>
   <meta charset="utf-8"/>
@@ -10,11 +10,11 @@
   <link rel="manifest" href="./manifest.webmanifest" />
   <link rel="icon" href="./icons/icon-192.png" />
   <link rel="apple-touch-icon" href="./icons/icon-192.png" />
-  <script src="./config.js?v=20260801-direct-sheet-v4-4"></script>
+  <script src="./config.js?v=20260801-cold-start-v4-4-1"></script>
   <script>
   (function(){
     'use strict';
-    const VERSION = 'github-standalone-v4.4-persistent-session-daily-chat-20260801';
+    const VERSION = 'github-standalone-v4.4.1-cold-start-recovery-20260801';
     const cfg = window.POMO_APP_CONFIG || {};
     const endpoint = String(cfg.POMO_APP_URL || '').trim();
     const isMissing = !endpoint || endpoint.includes('여기에_Apps_Script') || endpoint.includes('YOUR_');
@@ -1137,7 +1137,7 @@
           </div>
 
           <div class="hint">
-            스냅샷(현재 글자수)은 직전 스냅샷과의 차이만 누적돼요. <br/>🚩시작(기준)=오늘 기준 스냅샷 저장 · 🧹초기화=오늘 누적 0 · 🆕새편=새 회차를 0자부터
+            
           </div>
         </div>
       </div>
@@ -2735,12 +2735,20 @@ window.guideSave = async function(){
   let pingBackoff = 0;
 
   function nextPingMs_(){
+    // 첫 연결 전에는 정상 heartbeat 주기(2~5분)를 적용하지 않습니다.
+    // Apps Script가 늦게 깨어나 첫 요청이 실패해도 수 분간 빈 화면으로 남지 않게 합니다.
+    if (!presenceRegisteredOnServer || !sessionId) {
+      return Math.min(30000, 5000 + Math.max(0, pingBackoff));
+    }
     return document.hidden ? 300000 : 120000;
   }
 
   function schedulePing_(){
     if (pingTimer) clearTimeout(pingTimer);
-    pingTimer = setTimeout(()=>{ joinOrPing_(); }, Math.min(300000, Math.max(5000, nextPingMs_() + pingBackoff)));
+    const delay = (!presenceRegisteredOnServer || !sessionId)
+      ? nextPingMs_()
+      : Math.min(300000, Math.max(5000, nextPingMs_() + pingBackoff));
+    pingTimer = setTimeout(()=>{ joinOrPing_(); }, delay);
   }
 
   async function joinOrPing_(){
@@ -2748,14 +2756,13 @@ window.guideSave = async function(){
     if (recordRpcOwner_ || cmdWorking_ || directQueueWorking_) { schedulePing_(); return; }
     try{
       const fnName = presenceRegisteredOnServer ? 'joinOrPing' : 'enterPresence';
-      let res;
-      try{
-        res = await gasCallPromise_(fnName, [CLIENT_ID, myName()], 12000);
-      }catch(firstErr){
-        // 서버 배포 전환 순간에는 구버전 joinOrPing으로 한 번만 안전 fallback
-        if (fnName !== 'enterPresence') throw firstErr;
-        res = await gasCallPromise_('joinOrPing', [CLIENT_ID, myName()], 12000);
-      }
+      // 새 배포 직후 Apps Script 첫 실행은 수십 초 걸릴 수 있습니다. 12초에
+      // 요청을 버리고 중복 호출하던 흐름을 없애고, 첫 응답을 충분히 기다립니다.
+      const res = await gasCallPromise_(
+        fnName,
+        [CLIENT_ID, myName()],
+        presenceRegisteredOnServer ? 20000 : 60000
+      );
 
       if (!res) { schedulePing_(); return; }
       if (res.ok === false && res.reason === 'SESSION_CHANGED') { handleSessionEnded(); return; }
@@ -2790,7 +2797,9 @@ window.guideSave = async function(){
       renderTop();
       pingBackoff = res.busy ? Math.min(120000, pingBackoff + 10000) : Math.max(0, pingBackoff - 10000);
     }catch(e){
-      pingBackoff = Math.min(120000, pingBackoff + 15000);
+      pingBackoff = (!presenceRegisteredOnServer || !sessionId)
+        ? Math.min(25000, pingBackoff + 5000)
+        : Math.min(120000, pingBackoff + 15000);
     }finally{
       schedulePing_();
     }
@@ -3020,7 +3029,8 @@ window.guideSave = async function(){
   async function loadDirectSheet_(options){
     const opts = options || {};
     if (directSheetLoading_) return;
-    if (!sessionId) {
+    const allowWithoutSession = opts.allowWithoutSession === true;
+    if (!sessionId && !allowWithoutSession) {
       if (!opts.silent) directSetStatus_('서버 연결을 준비하고 있어요. 잠시 후 자동으로 불러옵니다.');
       return;
     }
@@ -3029,7 +3039,13 @@ window.guideSave = async function(){
     const refreshBtn = $('btnDirectRefresh');
     if (refreshBtn) refreshBtn.disabled = true;
     try{
-      const res = await gasCallPromise_('getDirectSheetState', [sessionId], 15000);
+      // 조회 함수는 빈 세션 ID를 안전하게 허용합니다. 초기 입장 응답을 기다리지 않고
+      // 오늘 시트를 병렬로 요청해, 서버가 느릴 때도 전체 대기 시간을 겹쳐 줄입니다.
+      const res = await gasCallPromise_(
+        'getDirectSheetState',
+        [String(sessionId || '')],
+        sessionId ? 30000 : 60000
+      );
       if (!res || res.ok === false) {
         if (res && res.reason === 'SESSION_CHANGED') {
           pingBackoff = 0;
@@ -4400,11 +4416,15 @@ window.guideSave = async function(){
     // 1) 서버 연결 전에도 KST 자동 타이머를 즉시 표시
     tick();
 
-    // 2) 초기 ping (세션/기록 연결 확보)
+    // 2) 오늘 채팅은 날짜 방을 사용하므로 Apps Script 입장 응답과 독립적으로 먼저 엽니다.
+    initFirebaseChat_(chatRoomIdForDay_(currentRecordDayKey_()));
+    if (recordMode_ === 'sheet') loadDirectSheet_({ allowWithoutSession:true });
+
+    // 3) 초기 ping (세션/기록 연결 확보)
     joinOrPing_();
     schedulePing_();
 
-    // 3) 타이머 로컬 tick
+    // 4) 타이머 로컬 tick
     setInterval(()=>{ if(!isStopped) tick(); }, 1000);
 
     // 3) 실제 창/탭 종료 시만 offline 처리. visibility hidden(background)은 유지합니다.
