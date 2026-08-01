@@ -1,7 +1,7 @@
 // 마끝마 뽀모 PWA Service Worker
-// v3.2.4 — 이벤트형 접속자(입장/퇴장/onDisconnect) 패치
+// v4.0 — KST 24시간 자동 타이머 + 영속 기록 큐
 
-const CACHE_NAME = 'pomo-github-standalone-v3-2-4-20260712-event-presence-v1';
+const CACHE_NAME = 'pomo-github-standalone-v4-20260801-auto-timer-v1';
 const STATIC_ASSETS = [
   './offline.html',
   './manifest.webmanifest',

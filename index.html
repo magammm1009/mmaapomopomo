@@ -1,5 +1,5 @@
 <!doctype html>
-<!-- POMO GitHub standalone v3 / 2026-07-09 / iframe 제거 + Apps Script RPC 기록 유지 -->
+<!-- POMO GitHub standalone v4 / 2026-08-01 / KST 24H 자동 타이머 + 영속 기록 큐 -->
 <html>
 <head>
   <meta charset="utf-8"/>
@@ -10,11 +10,11 @@
   <link rel="manifest" href="./manifest.webmanifest" />
   <link rel="icon" href="./icons/icon-192.png" />
   <link rel="apple-touch-icon" href="./icons/icon-192.png" />
-  <script src="./config.js?v=20260712-github-standalone-v3-2-4-event-presence"></script>
+  <script src="./config.js?v=20260801-auto-timer-v4"></script>
   <script>
   (function(){
     'use strict';
-    const VERSION = 'github-standalone-v3.2.4-event-presence-20260712';
+    const VERSION = 'github-standalone-v4-auto-timer-20260801';
     const cfg = window.POMO_APP_CONFIG || {};
     const endpoint = String(cfg.POMO_APP_URL || '').trim();
     const isMissing = !endpoint || endpoint.includes('여기에_Apps_Script') || endpoint.includes('YOUR_');
@@ -262,6 +262,13 @@
       gap:10px;
       justify-content:center;
       flex-wrap:wrap;
+    }
+    .autoTimerNote{
+      text-align:center;
+      color:var(--muted);
+      font-size:12px;
+      font-weight:800;
+      line-height:1.5;
     }
     button{
       border:0;
@@ -911,7 +918,7 @@
         <div class="icon">⏰</div>
         <div>
           <div>ᵔᴥᵔ</div>
-          <div class="metaSmall" id="hostLabel">HOST: -</div>
+          <div class="metaSmall" id="hostLabel">24H AUTO · KST</div>
         </div>
       </div>
       <div class="topActions">
@@ -995,11 +1002,13 @@
     <div class="card timer">
       <div class="time" id="time">25:00</div>
       <div class="phase" id="phase">🔥작업 중🔥</div>
-      <div class="controls">
-        <button class="btnStart" id="btnStart">⚡시작⚡</button>
-        <button class="btnGhost" id="btnPause">정지</button>
-        <button class="btnReset" id="btnReset">리셋</button>
-        <button class="btnGhost" id="btnClaim">🤚호스트 가져오기</button>
+      <div class="autoTimerNote">한국시간 자정부터 작업 25분 · 휴식 5분이 자동 반복됩니다.</div>
+      <!-- 구버전 스크립트 안전 호환용 숨김 요소: 타이머 제어 기능은 사용하지 않음 -->
+      <div class="controls" hidden aria-hidden="true">
+        <button id="btnStart" type="button" disabled></button>
+        <button id="btnPause" type="button" disabled></button>
+        <button id="btnReset" type="button" disabled></button>
+        <button id="btnClaim" type="button" disabled></button>
       </div>
     </div>
 
@@ -1074,15 +1083,18 @@
 
 <script>
   // =====================
-  // v3.2.4: 이벤트형 접속자
+  // v4.0: 호스트 없는 KST 24시간 자동 타이머 + 영속 기록 큐
   // - 닉네임이 설정된 앱 입장: 즉시 online 등록
   // - background: 접속 유지(heartbeat로 접속 여부를 판단하지 않음)
   // - 퇴장/창 종료/Firebase onDisconnect: 즉시 offline 정리
-  // - 기록/명령/뽀모/호스트: Apps Script 서버 유지
+  // - 기록/명령: Apps Script 서버, 타이머: KST 벽시계 기준 로컬 계산
   // =====================
 
   const WORK_SEC = 25 * 60;
   const BREAK_SEC = 5 * 60;
+  const AUTO_CYCLE_SEC = WORK_SEC + BREAK_SEC;
+  const KST_OFFSET_MS = 9 * 60 * 60 * 1000;
+  const CMD_QUEUE_STORAGE_KEY = 'VENT_CMD_QUEUE_V1';
   let sessionId = null;
   let pom = null;
 
@@ -1093,6 +1105,10 @@
   let lastAnchorSeq = 0;
 
   let localRemaining = 25 * 60;
+  let serverClockOffsetMs = 0;
+  let lastAutoToken = '';
+  let lastAutoDayKey = '';
+  let midnightRefreshDay = '';
 
   // UI / 상태
   let activeCount = 0;
@@ -1103,7 +1119,7 @@
   // - Apps Script presence는 작업방 대시보드 API와 호스트 관리용 복제본
   let serverPresenceAt = 0;
   let firebasePresenceReady = false;
-  let hostName = '-';
+  let hostName = '24H AUTO';
   let iAmHost = false;
   let isStopped = false;
 
@@ -1126,6 +1142,7 @@
   // 명령 처리 큐
   const cmdQueue_ = [];
   let cmdWorking_ = false;
+  let cmdQueueRestored_ = false;
 
   // sound
   let soundEnabled = true;
@@ -1324,15 +1341,13 @@
   }
 
   function applyHostUI(hostNm, amHost){
-    hostName = hostNm || '-';
-    iAmHost = !!amHost;
-    $('hostLabel').textContent = `HOST: ${hostName}${iAmHost ? ' (나)' : ''}`;
-
-    // 제어 요청 중에는 중복 클릭을 막고, 평소에는 호스트만 타이머 버튼 활성화
-    $('btnStart').disabled = controlBusy || !iAmHost;
-    $('btnPause').disabled = controlBusy || !iAmHost;
-    $('btnReset').disabled = controlBusy || !iAmHost;
-    $('btnClaim').disabled = controlBusy;
+    hostName = '24H AUTO';
+    iAmHost = false;
+    $('hostLabel').textContent = '24H AUTO · KST';
+    ['btnStart','btnPause','btnReset','btnClaim'].forEach((id)=>{
+      const btn = $(id);
+      if (btn) btn.disabled = true;
+    });
   }
 
   function renderTop(){
@@ -1615,17 +1630,20 @@
     }
   };
 
-  async function fbSend_(user, text, type){
+  async function fbSend_(user, text, type, forcedKey){
     await fbEnsureReady_();
     const roomId = fbRoomId || sessionId;
-    const r = window.FB.ref(window.FB.db, fbMessagesPath_(String(roomId)));
-    const p = window.FB.push(r);
+    const basePath = fbMessagesPath_(String(roomId));
+    const r = window.FB.ref(window.FB.db, basePath);
+    const safeKey = String(forcedKey || '').replace(/[.#$\[\]\/]/g, '_').slice(0, 180);
+    const p = safeKey ? window.FB.ref(window.FB.db, `${basePath}/${safeKey}`) : window.FB.push(r);
     await window.FB.set(p, {
       ts: Date.now(),
       name: String(user||'익명').slice(0,12),
       text: String(text||'').slice(0,500),
       type: String(type||'chat')
     });
+    return p.key;
   }
 
   function compactPomForSync_(state){
@@ -1670,16 +1688,9 @@
   }
 
   function applyControlSync_(v){
-    const ts = Number(v && v.ts || 0);
-    if (!ts || (Date.now() - ts) > CONTROL_SYNC_MAX_AGE_MS || ts <= lastControlSyncAt) return;
-    const c = v && v.control;
-    if (!c || typeof c !== 'object') return;
-    lastControlSyncAt = ts;
-
-    if (c.hostName) hostName = String(c.hostName);
-    if (c.hostClientId) iAmHost = String(c.hostClientId) === CLIENT_ID;
-    if (c.pom) onPomState({ ok:true, ...c.pom });
-    renderTop();
+    // 구버전 클라이언트가 남긴 제어 메시지는 무시합니다.
+    // 모든 화면은 KST 벽시계에서 같은 자동 상태를 계산합니다.
+    tick();
   }
 
   async function initFirebaseChat_(roomId){
@@ -1730,7 +1741,13 @@ let guideUnsub_ = null;
 let guideCache_ = { text:'', updatedAt:0, by:'' };
 
 // 기본 가이드(DB에 아직 없을 때 보여줄 내용)
-const GUIDE_DEFAULT_TEXT_ = "⏰ 뽀모 사용 가이드⚡\n• 시작 : 작업 25분 → 휴식 5분 자동 반복\n• 정지 : 타이머 일시 정지\n• 리셋 : 현재 사이클 초기화\n• 알림 : 소리 켜기/끄기 (알람 들으시려면 한번 클릭해주셔야 함!)\n\n✍기록 방법\n• 기준 - 현재 스냅샷 기준 확인 가능\n•기준이 없다는 메시지 확인 후 채팅으로 시작할 글자수 남기기\n 🔥0부터 시작해도 ok, 3788처럼 시작할 글자수도 ok!\n• 기준이 잡힌 후부터는 현재까지 쓴 글자수를 채팅으로 남기기\n 🔥자동으로 누적 기록 * +684 (현재 0 / 오늘 누적 684)\n• 초기화 : 오늘 기록 초기화(누적/스냅샷/기준)\n• 새편 : 새 회차(0부터) 시작(기존 누적 글자수에 자동 포함)\n\n• /0 : 기본 작품: 한 작품만 기록하실 땐 따로 명령어 없이 숫자만 쭉쭉 입력(먼슬리에 전체 통계 확인 가능)\n• /1, /2, /3... : 다수 작품 기록 가능!  \n 🔥/1 시작 1000, 2000...\n 🔥/2 시작 0, 1000, 2000...\n 🔥작업하다가 다시 기본 작품에 글자수를 넣고 싶을 땐 /0 글자수!!!\n\n💬 채팅 명령어\n• 수정 : 수정 모드 (기록X, 시스템 메시지만)\n• 퇴고 : 퇴고 모드 (기록X, 시스템 메시지만)\n• 시놉 : 시놉 작성 중 (기록X, 시스템 메시지만)\n• 트릿 : 트릿 작성 중 (기록X, 시스템 메시지만)\n• 자료조사 : 자료 조사 중 (기록X, 시스템 메시지만)\n• 인풋 : 인풋 중 (기록X, 시스템 메시지만)\n\n😻그 외 ( 또 다른 문의가 있을 시 방장에게 1:1 줍쇼!! )\n• 호스트를 기준으로 뽀모 타이머가 돌아갑니다\n• 뽀모를 마무리하고 나가실 땐 🏃‍♂️나가기 버튼 꼭 눌러주시기";
+const GUIDE_DEFAULT_TEXT_ = "⏰ 뽀모 사용 가이드⚡\n• 타이머 : 한국시간 자정부터 작업 25분 → 휴식 5분 자동 반복\n• 언제 접속해도 모두 같은 시간에 맞춰 바로 참여\n• 알림 : 소리 켜기/끄기 (알람 들으시려면 한번 클릭해주셔야 함!)\n\n✍기록 방법\n• 기준 - 현재 스냅샷 기준 확인 가능\n•기준이 없다는 메시지 확인 후 채팅으로 시작할 글자수 남기기\n 🔥0부터 시작해도 ok, 3788처럼 시작할 글자수도 ok!\n• 기준이 잡힌 후부터는 현재까지 쓴 글자수를 채팅으로 남기기\n 🔥자동으로 누적 기록 * +684 (현재 0 / 오늘 누적 684)\n• 초기화 : 오늘 기록 초기화(누적/스냅샷/기준)\n• 새편 : 새 회차(0부터) 시작(기존 누적 글자수에 자동 포함)\n\n• /0 : 기본 작품: 한 작품만 기록하실 땐 따로 명령어 없이 숫자만 쭉쭉 입력(먼슬리에 전체 통계 확인 가능)\n• /1, /2, /3... : 다수 작품 기록 가능!  \n 🔥/1 시작 1000, 2000...\n 🔥/2 시작 0, 1000, 2000...\n 🔥작업하다가 다시 기본 작품에 글자수를 넣고 싶을 땐 /0 글자수!!!\n\n💬 채팅 명령어\n• 수정 : 수정 모드 (기록X, 시스템 메시지만)\n• 퇴고 : 퇴고 모드 (기록X, 시스템 메시지만)\n• 시놉 : 시놉 작성 중 (기록X, 시스템 메시지만)\n• 트릿 : 트릿 작성 중 (기록X, 시스템 메시지만)\n• 자료조사 : 자료 조사 중 (기록X, 시스템 메시지만)\n• 인풋 : 인풋 중 (기록X, 시스템 메시지만)\n\n😻그 외 ( 또 다른 문의가 있을 시 방장에게 1:1 줍쇼!! )\n• 호스트 없이 24시간 자동으로 타이머가 돌아갑니다\n• 뽀모를 마무리하고 나가실 땐 🏃‍♂️나가기 버튼 꼭 눌러주시기";
+
+function upgradeLegacyGuideText_(text){
+  return String(text || '')
+    .replace('• 시작 : 작업 25분 → 휴식 5분 자동 반복\n• 정지 : 타이머 일시 정지\n• 리셋 : 현재 사이클 초기화', '• 타이머 : 한국시간 자정부터 작업 25분 → 휴식 5분 자동 반복\n• 언제 접속해도 모두 같은 시간에 맞춰 바로 참여')
+    .replace('• 호스트를 기준으로 뽀모 타이머가 돌아갑니다', '• 호스트 없이 24시간 자동으로 타이머가 돌아갑니다');
+}
 
 function guidePreviewText_(t){
   const s = String(t || '').trim();
@@ -1826,7 +1843,7 @@ async function initGuide_(roomId){
       const v = snap && snap.val ? snap.val() : null;
       if (v && typeof v === 'object'){
         guideCache_ = {
-          text: (v.text ?? ''),
+          text: upgradeLegacyGuideText_(v.text ?? ''),
           updatedAt: Number(v.updatedAt ?? 0),
           by: (v.by ?? '')
         };
@@ -2275,19 +2292,63 @@ window.guideSave = async function(){
   }
 
   // =====================
-  // 서버 명령 처리 큐 (BUSY면 자동 재시도)
+  // 서버 명령 처리 큐
+  // - Firebase 메시지 키를 고유 requestId로 사용해 서버 재시도 중복 기록을 방지
+  // - localStorage에 보관해 새로고침/앱 재실행 뒤에도 미처리 기록을 자동 복구
   // =====================
-  function runProcessCommandOnly_(sid, user, msg){
+  function persistCommandQueue_(){
+    try{
+      const safe = cmdQueue_.map(job => ({
+        sid:String(job.sid || ''), user:String(job.user || ''), msg:String(job.msg || ''),
+        requestId:String(job.requestId || ''), messageKey:String(job.messageKey || ''),
+        tries:Number(job.tries || 0), backoff:Number(job.backoff || 1200),
+        notified:!!job.notified, createdAtMs:Number(job.createdAtMs || Date.now())
+      }));
+      localStorage.setItem(CMD_QUEUE_STORAGE_KEY, JSON.stringify(safe));
+    }catch(e){}
+  }
+
+  function restoreCommandQueue_(){
+    if (cmdQueueRestored_) return;
+    cmdQueueRestored_ = true;
+    try{
+      const parsed = JSON.parse(localStorage.getItem(CMD_QUEUE_STORAGE_KEY) || '[]');
+      const cutoff = Date.now() - 48 * 60 * 60 * 1000;
+      for (const raw of (Array.isArray(parsed) ? parsed : [])){
+        if (!raw || !raw.requestId || Number(raw.createdAtMs || 0) < cutoff) continue;
+        if (cmdQueue_.some(j => j.requestId === raw.requestId)) continue;
+        cmdQueue_.push({
+          sid:String(raw.sid || ''), user:String(raw.user || '익명'), msg:String(raw.msg || ''),
+          requestId:String(raw.requestId), messageKey:String(raw.messageKey || ''),
+          tries:Number(raw.tries || 0), notified:!!raw.notified,
+          backoff:Math.max(1200, Number(raw.backoff || 1200)),
+          createdAtMs:Number(raw.createdAtMs || Date.now())
+        });
+      }
+      persistCommandQueue_();
+    }catch(e){
+      try{ localStorage.removeItem(CMD_QUEUE_STORAGE_KEY); }catch(_e){}
+    }
+  }
+
+  function finishCommandJob_(){
+    cmdQueue_.shift();
+    persistCommandQueue_();
+  }
+
+  function runProcessCommandOnly_(sid, user, msg, requestId){
     return new Promise((resolve, reject) => {
       google.script.run
         .withSuccessHandler(resolve)
         .withFailureHandler(reject)
-        .processCommandOnly(sid, user, msg);
+        .processCommandOnly(sid, user, msg, requestId);
     });
   }
 
-  function enqueueCommand_(sid, user, msg){
-    cmdQueue_.push({ sid, user, msg, tries: 0, notified: false, backoff: 1200 });
+  function enqueueCommand_(sid, user, msg, requestId, messageKey){
+    if (!requestId || cmdQueue_.some(j => j.requestId === requestId)) return;
+    cmdQueue_.push({ sid, user, msg, requestId, messageKey, tries: 0, notified: false, backoff: 1200, createdAtMs: Date.now() });
+    persistCommandQueue_();
     if (!cmdWorking_) processCmdQueue_();
   }
 
@@ -2297,14 +2358,20 @@ window.guideSave = async function(){
 
     while (cmdQueue_.length){
       const job = cmdQueue_[0];
-      if (!job.sid) { cmdQueue_.shift(); continue; }
+      if (!job.sid) { finishCommandJob_(); continue; }
+
+      if (sessionId && job.sid !== sessionId) {
+        try{ await fbSend_('SYSTEM', '⚠️ 날짜가 바뀌어 이전 날짜의 미처리 기록을 자동 반영하지 않았어요. 해당 값만 다시 입력해 주세요.', 'system', `${job.messageKey}_result`); }catch(e){}
+        finishCommandJob_();
+        continue;
+      }
 
       try{
-        const res = await runProcessCommandOnly_(job.sid, job.user, job.msg);
+        const res = await runProcessCommandOnly_(job.sid, job.user, job.msg, job.requestId);
 
         if (res && res.ok === false && res.reason === 'SESSION_CHANGED') {
-          handleSessionEnded();
-          cmdQueue_.shift();
+          try{ await fbSend_('SYSTEM', '⚠️ 세션이 바뀌어 이 기록은 자동 반영하지 않았어요. 해당 값만 다시 입력해 주세요.', 'system', `${job.messageKey}_result`); }catch(e){}
+          finishCommandJob_();
           continue;
         }
 
@@ -2312,34 +2379,34 @@ window.guideSave = async function(){
           job.tries += 1;
           if (!job.notified){
             job.notified = true;
-            try{ await fbSend_('SYSTEM', '⏳ 서버가 잠깐 바빠요. 처리 대기 중… (자동 재시도)', 'system'); }catch(e){}
+            try{ await fbSend_('SYSTEM', '⏳ 서버가 잠깐 바빠요. 기록 요청을 안전하게 보관하고 자동 재시도 중이에요.', 'system', `${job.messageKey}_pending`); }catch(e){}
           }
           job.backoff = Math.min(12000, Math.floor(job.backoff * 1.35) + 200);
+          persistCommandQueue_();
           const jitter = Math.floor(Math.random() * 300);
           await new Promise(r => setTimeout(r, job.backoff + jitter));
           continue;
         }
 
         if (res && res.hadCommand && res.sysText) {
-          try{ await fbSend_('SYSTEM', res.sysText, 'system'); }catch(e){}
+          try{ await fbSend_('SYSTEM', res.sysText, 'system', `${job.messageKey}_result`); }catch(e){}
         }
 
-        cmdQueue_.shift();
+        finishCommandJob_();
 
       } catch(e){
         job.tries += 1;
         if (!job.notified){
           job.notified = true;
-          try{ await fbSend_('SYSTEM', '📡 서버 연결이 잠깐 불안정해요. 처리 대기 중…', 'system'); }catch(_e){}
+          try{ await fbSend_('SYSTEM', '📡 서버 연결이 잠깐 불안정해요. 기록 요청을 기기에 보관하고 자동 재시도 중이에요.', 'system', `${job.messageKey}_pending`); }catch(_e){}
         }
-        if (job.tries >= 8){
-          try{ await fbSend_('SYSTEM', '⚠️ 서버 처리 실패(권한/네트워크). 잠시 후 다시 입력해줘!', 'system'); }catch(_e){}
-          cmdQueue_.shift();
-        } else {
-          job.backoff = Math.min(15000, Math.floor(job.backoff * 1.5) + 400);
-          const jitter = Math.floor(Math.random() * 400);
-          await new Promise(r => setTimeout(r, job.backoff + jitter));
+        if (job.tries === 8){
+          try{ await fbSend_('SYSTEM', '💾 아직 서버 응답이 없지만 기록 요청은 이 기기에 보관되어 있어요. 앱을 다시 열어도 자동 재시도합니다.', 'system', `${job.messageKey}_pending`); }catch(_e){}
         }
+        job.backoff = Math.min(30000, Math.floor(job.backoff * 1.5) + 400);
+        persistCommandQueue_();
+        const jitter = Math.floor(Math.random() * 500);
+        await new Promise(r => setTimeout(r, job.backoff + jitter));
       }
     }
 
@@ -2349,78 +2416,64 @@ window.guideSave = async function(){
   // =====================
   // 뽀모 상태 수신/렌더
   // =====================
-  function onPomState(res, options){
-    if (!res) return;
+  function computeAutoPomState_(browserNowMs){
+    const nowMs = Number(browserNowMs || Date.now()) + serverClockOffsetMs;
+    const kstMs = nowMs + KST_OFFSET_MS;
+    const msInDay = ((kstMs % 86400000) + 86400000) % 86400000;
+    const secInDay = Math.floor(msInDay / 1000);
+    const dayIndex = Math.floor(kstMs / 86400000);
+    const cycleIndex = Math.floor(secInDay / AUTO_CYCLE_SEC);
+    const cycleSec = secInDay % AUTO_CYCLE_SEC;
+    const isWork = cycleSec < WORK_SEC;
+    const phase = isWork ? 'work' : 'break';
+    const phaseSeconds = isWork ? WORK_SEC : BREAK_SEC;
+    const phaseElapsed = isWork ? cycleSec : cycleSec - WORK_SEC;
+    const dayKey = new Date(kstMs).toISOString().slice(0, 10);
+    return {
+      ok:true, isRunning:true, autoTimer:true, timezone:'Asia/Seoul', dayKey,
+      phase, phaseSeconds, remaining:phaseSeconds - phaseElapsed,
+      phaseStartMs:nowMs - phaseElapsed * 1000,
+      seq:dayIndex * 48 + cycleIndex * 2 + (isWork ? 0 : 1),
+      serverNowMs:nowMs
+    };
+  }
+
+  function renderAutoPom_(options){
     const opts = options || {};
-    if (res.ok === false && res.reason === 'SESSION_CHANGED') { handleSessionEnded(); return; }
-
-    const seq = Number(res.seq || 0);
-    const phase = res.phase || 'work';
-
-    // phase 변경 알림
-    if (!opts.silent && ((seq !== lastPomSeq && lastPomSeq !== 0) || (lastPhase !== null && phase !== lastPhase))) playPhaseSound(phase);
-    lastPomSeq = seq;
-    lastPhase = phase;
-
-    pom = res;
-
-    const serverRemain = Number(res.remaining ?? res.phaseSeconds ?? localRemaining);
-
-    if (!res.isRunning) {
-      // 알림이 켜진 동안에는 무음 keep-alive를 유지해 다음 시작/전환 알림 누락을 줄입니다.
-      if (soundEnabled && userGestured) startAudioKeepAlive_();
-      anchorRemainSec = null;
-      anchorAtMs = null;
-      lastRenderSec = null;
-
-      localRemaining = serverRemain;
-      $('time').textContent = fmt(localRemaining);
-    } else {
-      if (soundEnabled && userGestured) startAudioKeepAlive_();
-      const needReset =
-        (anchorRemainSec == null || anchorAtMs == null) ||
-        (seq !== lastAnchorSeq) ||
-        (Math.abs(serverRemain - localRemaining) >= 2);
-
-      if (needReset) {
-        anchorRemainSec = serverRemain;
-        anchorAtMs = Date.now();
-        lastRenderSec = null;
-        lastAnchorSeq = seq;
-      }
-      tick();
-    }
-
+    const state = computeAutoPomState_(Date.now());
+    const token = `${state.dayKey}|${state.seq}`;
+    if (!opts.silent && lastAutoToken && token !== lastAutoToken) playPhaseSound(state.phase);
+    lastAutoToken = token;
+    lastPomSeq = state.seq;
+    lastPhase = state.phase;
+    pom = state;
+    localRemaining = state.remaining;
+    $('time').textContent = fmt(state.remaining);
     const ph = $('phase');
-    ph.textContent = (phase === 'work') ? '🔥작업 중🔥' : '🧋휴식 중';
-    ph.dataset.mode = (phase === 'work') ? 'work' : 'rest';
+    ph.textContent = state.phase === 'work' ? '🔥작업 중🔥' : '🧋휴식 중';
+    ph.dataset.mode = state.phase === 'work' ? 'work' : 'rest';
+    if (soundEnabled && userGestured) startAudioKeepAlive_();
+
+    if (lastAutoDayKey && state.dayKey !== lastAutoDayKey && midnightRefreshDay !== state.dayKey) {
+      midnightRefreshDay = state.dayKey;
+      pingBackoff = 0;
+      joinOrPing_();
+    }
+    lastAutoDayKey = state.dayKey;
+    return state;
+  }
+
+  function onPomState(res, options){
+    if (res && Number.isFinite(Number(res.serverNowMs))) {
+      const observedOffset = Number(res.serverNowMs) - Date.now();
+      if (Math.abs(observedOffset) > 5000) serverClockOffsetMs = observedOffset;
+    }
+    return renderAutoPom_(options);
   }
 
   function tick(){
     if (isStopped) return;
-    if (!pom) return;
-
-    if (!pom.isRunning) {
-      $('time').textContent = fmt(localRemaining);
-      return;
-    }
-
-    if (anchorRemainSec == null || anchorAtMs == null) return;
-
-    const elapsed = Math.floor((Date.now() - anchorAtMs) / 1000);
-    const remain = Math.max(0, anchorRemainSec - elapsed);
-
-    if (remain !== lastRenderSec) {
-      lastRenderSec = remain;
-      localRemaining = remain;
-      $('time').textContent = fmt(remain);
-    }
-
-    // 0초 근처에서는 호스트만 서버에 한 번 동기화하고 Firebase로 즉시 전파
-    if (remain === 0 && iAmHost && (Date.now() - lastZeroSyncAt) > 1200) {
-      lastZeroSyncAt = Date.now();
-      syncPom();
-    }
+    renderAutoPom_();
   }
 
   function gasCallPromise_(fnName, args, timeoutMs){
@@ -2434,17 +2487,8 @@ window.guideSave = async function(){
   }
 
   async function syncPom(){
-    if (isStopped || !sessionId || !iAmHost || pomSyncInFlight) return;
-    pomSyncInFlight = true;
-    try{
-      const res = await gasCallPromise_('getPomodoroState', [sessionId], 10000);
-      if (res) {
-        onPomState(res);
-        fbBroadcastControl_(res, 'phase-sync');
-      }
-    }catch(e){} finally {
-      pomSyncInFlight = false;
-    }
+    if (isStopped) return;
+    renderAutoPom_();
   }
 
   // =====================
@@ -2454,19 +2498,16 @@ window.guideSave = async function(){
   let pingBackoff = 0;
 
   function nextPingMs_(){
-    if (document.hidden) return (iAmHost ? 7000 : 20000);
-    return (iAmHost ? 3500 : 12000);
+    return document.hidden ? 180000 : 60000;
   }
 
   function schedulePing_(){
     if (pingTimer) clearTimeout(pingTimer);
-    pingTimer = setTimeout(()=>{ joinOrPing_(); }, Math.min(30000, Math.max(1500, nextPingMs_() + pingBackoff)));
+    pingTimer = setTimeout(()=>{ joinOrPing_(); }, Math.min(300000, Math.max(5000, nextPingMs_() + pingBackoff)));
   }
 
   async function joinOrPing_(){
     if (isStopped) return;
-    if (controlBusy) { schedulePing_(); return; }
-
     try{
       const fnName = presenceRegisteredOnServer ? 'joinOrPing' : 'enterPresence';
       let res;
@@ -2491,22 +2532,24 @@ window.guideSave = async function(){
         return;
       }
 
-      hostName = res.hostName || hostName;
-      iAmHost = !!res.iAmHost;
+      hostName = '24H AUTO';
+      iAmHost = false;
       if (!firebasePresenceReady) applyServerPresence_(res);
-      if (res.pom) onPomState({ ok:true, ...res.pom });
+      if (res.pom) onPomState({ ok:true, ...res.pom }, { silent:true });
 
       if (sessionId){
         initFirebaseChat_(sessionId);
         await startPresence_();
         initNotice_(sessionId);
         initGuide_(sessionId);
+        restoreCommandQueue_();
+        if (cmdQueue_.length && !cmdWorking_) processCmdQueue_();
       }
 
       renderTop();
-      pingBackoff = res.busy ? Math.min(15000, pingBackoff + 1200) : Math.max(0, pingBackoff - 900);
+      pingBackoff = res.busy ? Math.min(120000, pingBackoff + 10000) : Math.max(0, pingBackoff - 10000);
     }catch(e){
-      pingBackoff = Math.min(15000, pingBackoff + 1800);
+      pingBackoff = Math.min(120000, pingBackoff + 15000);
     }finally{
       schedulePing_();
     }
@@ -2547,8 +2590,8 @@ window.guideSave = async function(){
     (async () => {
       try{
         const isCmd = isCommandMsg_(msg);
-        await fbSend_(user, msg, isCmd ? 'cmd' : 'chat');
-        if (isCmd) enqueueCommand_(sessionId, user, msg);
+        const messageKey = await fbSend_(user, msg, isCmd ? 'cmd' : 'chat');
+        if (isCmd) enqueueCommand_(sessionId, user, msg, `${sessionId}|${messageKey}`, messageKey);
       } catch(e) {
         alert('전송 실패! 네트워크/권한을 확인해주세요.');
       } finally {
@@ -3636,8 +3679,8 @@ window.guideSave = async function(){
   document.addEventListener('visibilitychange', ()=>{
     if (!document.hidden && userGestured && soundEnabled){
       ensureAudio_().then((ready)=>{ if (ready) startAudioKeepAlive_(); }).catch(()=>{});
-      if (iAmHost) syncPom();
     }
+    tick();
     schedulePing_();
   });
   window.addEventListener('pageshow', ()=>{
@@ -3686,11 +3729,14 @@ window.guideSave = async function(){
     window.addEventListener('pointerdown', markUserGesture, { once:true });
     window.addEventListener('keydown', markUserGesture, { once:true });
 
-    // 1) 초기 ping (세션 확보)
+    // 1) 서버 연결 전에도 KST 자동 타이머를 즉시 표시
+    tick();
+
+    // 2) 초기 ping (세션/기록 연결 확보)
     joinOrPing_();
     schedulePing_();
 
-    // 2) 타이머 로컬 tick
+    // 3) 타이머 로컬 tick
     setInterval(()=>{ if(!isStopped) tick(); }, 1000);
 
     // 3) 실제 창/탭 종료 시만 offline 처리. visibility hidden(background)은 유지합니다.
