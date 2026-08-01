@@ -1,7 +1,7 @@
 // 마끝마 뽀모 PWA Service Worker
-// v4.0 — KST 24시간 자동 타이머 + 영속 기록 큐
+// v4.1 — 채팅 기록 / 시트 직접 입력 전환
 
-const CACHE_NAME = 'pomo-github-standalone-v4-20260801-auto-timer-v1';
+const CACHE_NAME = 'pomo-github-standalone-v4-1-20260801-direct-sheet-v1';
 const STATIC_ASSETS = [
   './offline.html',
   './manifest.webmanifest',

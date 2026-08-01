@@ -1,5 +1,5 @@
 <!doctype html>
-<!-- POMO GitHub standalone v4 / 2026-08-01 / KST 24H 자동 타이머 + 영속 기록 큐 -->
+<!-- POMO GitHub standalone v4.1 / 2026-08-01 / 채팅·시트 직접 입력 전환 -->
 <html>
 <head>
   <meta charset="utf-8"/>
@@ -10,11 +10,11 @@
   <link rel="manifest" href="./manifest.webmanifest" />
   <link rel="icon" href="./icons/icon-192.png" />
   <link rel="apple-touch-icon" href="./icons/icon-192.png" />
-  <script src="./config.js?v=20260801-auto-timer-v4"></script>
+  <script src="./config.js?v=20260801-direct-sheet-v4-1"></script>
   <script>
   (function(){
     'use strict';
-    const VERSION = 'github-standalone-v4-auto-timer-20260801';
+    const VERSION = 'github-standalone-v4.1-direct-sheet-20260801';
     const cfg = window.POMO_APP_CONFIG || {};
     const endpoint = String(cfg.POMO_APP_URL || '').trim();
     const isMissing = !endpoint || endpoint.includes('여기에_Apps_Script') || endpoint.includes('YOUR_');
@@ -569,6 +569,104 @@
   text-overflow: ellipsis;
 }
 
+/* ===== 기록 방식 전환: 채팅 / 시트 직접 입력 ===== */
+.recordModeTabs{
+  display:grid;
+  grid-template-columns:1fr 1fr;
+  gap:8px;
+  margin:10px 0;
+  padding:4px;
+  border:1px solid var(--line);
+  border-radius:14px;
+  background:#fff8fc;
+}
+.recordModeTab{
+  min-width:0;
+  width:100%;
+  padding:9px 8px;
+  border-radius:11px;
+  background:transparent;
+  color:#6d5361;
+  font-size:13px;
+}
+.recordModeTab.isActive{
+  background:#fff;
+  color:#6f2048;
+  box-shadow:0 4px 12px rgba(70,20,50,.08);
+  outline:1px solid #f2d7ea;
+}
+.recordQueueStatus{margin:-2px 0 9px;padding:7px 9px;border-radius:10px;background:#fff8e8;border:1px solid #f5dfad;font-size:11px;font-weight:800;line-height:1.4;}
+.recordQueueStatus.isHidden{display:none;}
+.recordQueueStatus.isOk{background:#eefbf7;border-color:#c9eee3;}
+.recordQueueStatus.isError{background:#fff0f3;border-color:#f5cbd6;}
+.recordModePanel.isHidden{ display:none !important; }
+.sheetDirectHead{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:10px;
+  margin-bottom:8px;
+}
+.sheetDirectTitle{ font-weight:950; font-size:14px; }
+.sheetDirectSub{ color:var(--muted); font-size:11px; line-height:1.45; margin-top:2px; }
+.sheetDirectStatus{
+  padding:9px 10px;
+  border-radius:12px;
+  background:#fff8e8;
+  border:1px solid #f5dfad;
+  font-size:12px;
+  font-weight:750;
+  line-height:1.45;
+  margin-bottom:9px;
+}
+.sheetDirectStatus.isOk{ background:#eefbf7; border-color:#c9eee3; }
+.sheetDirectStatus.isError{ background:#fff0f3; border-color:#f5cbd6; }
+.sheetBlockList{
+  display:grid;
+  grid-template-columns:repeat(2,minmax(0,1fr));
+  gap:9px;
+  max-height:520px;
+  overflow:auto;
+  padding:1px 2px 3px;
+}
+.sheetBlock{
+  border:1px solid var(--line);
+  border-radius:14px;
+  padding:10px;
+  background:#fff;
+  min-width:0;
+}
+.sheetBlock.isMine{ border-color:#9fddcf; box-shadow:0 0 0 2px rgba(159,221,207,.17); }
+.sheetBlock.isLocked{ opacity:.62; background:#fafafa; }
+.sheetBlockTop{ display:flex; justify-content:space-between; align-items:flex-start; gap:8px; }
+.sheetBlockName{ font-size:13px; font-weight:950; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.sheetBlockTotal{ font-size:12px; font-weight:950; color:#16715c; white-space:nowrap; }
+.sheetBlockMeta{ color:var(--muted); font-size:10px; margin:3px 0 8px; }
+.sheetEntryGrid{ display:grid; gap:7px; }
+.sheetEntryLine{ display:grid; grid-template-columns:42px minmax(0,1fr) 48px; align-items:center; gap:5px; }
+.sheetEntryLine label{ font-size:11px; font-weight:850; color:#604b56; }
+.sheetEntryLine input{
+  width:100%;
+  min-width:0;
+  padding:7px 8px;
+  border:1px solid var(--line);
+  border-radius:9px;
+  font-size:13px;
+}
+.sheetEntryLine button{
+  min-width:0;
+  width:100%;
+  padding:7px 4px;
+  border-radius:9px;
+  font-size:11px;
+  background:var(--mint);
+}
+.sheetEntryLine button[data-kind="base"]{ background:var(--pink); }
+.sheetEntryHint{ margin-top:8px; color:var(--muted); font-size:10px; line-height:1.4; }
+@media (max-width:520px){
+  .sheetBlockList{ grid-template-columns:1fr; }
+}
+
 /* (선택) 아주 좁을 때 더 촘촘하게 */
 @media (max-width: 360px){
   .quickRow{ gap: 6px; }
@@ -1015,22 +1113,43 @@
     <div class="card">
       <div class="nameRow"><input id="user" placeholder="닉네임 (예: 리로)" maxlength="8" /><div class="noticeSlow noticeBtn" id="btnGuide" title="사용 가이드" tabindex="0"><span class="label">👻가이드</span><span class="preview">⏰공용 뽀모 사용 안내⏰</span></div></div>
 
-      <div class="chatLogWrap">
-        <div id="log"></div>
-        <button class="newMessagesBtn isHidden" id="btnNewMessages" type="button" aria-live="polite" aria-label="새 메시지로 이동">새 메시지 ↓</button>
+      <div class="recordModeTabs" role="tablist" aria-label="기록 방식 선택">
+        <button class="recordModeTab isActive" id="btnModeChat" type="button" role="tab" aria-selected="true">💬 채팅 기록</button>
+        <button class="recordModeTab" id="btnModeSheet" type="button" role="tab" aria-selected="false">📋 시트 직접 입력</button>
       </div>
-<div style="margin-top:10px;">
-        <textarea id="msg" placeholder="메시지 입력 (Enter=전송 / Shift+Enter=줄바꿈)&#10;🔥오늘도 열글빡글🔥"></textarea>
-        <div class="quickRow">
-          <button class="btnReset" id="btnResetToday">🧹초기화</button>
-          <button class="btnGhost" id="btnStartSnap">🚩시작(기준)</button>
-          <button class="btnGhost" id="btnNewEpisode">🆕새편</button>
-          <button class="btnStart" id="sendBtn">전송</button>
-        </div>
+      <div class="recordQueueStatus isHidden" id="recordQueueStatus" role="status" aria-live="polite"></div>
 
-        <div class="hint">
-          스냅샷(현재 글자수)은 직전 스냅샷과의 차이만 누적돼요. <br/>🚩시작(기준)=오늘 기준 스냅샷 저장 · 🧹초기화=오늘 누적 0 · 🆕새편=새 회차를 0자부터
+      <div class="recordModePanel" id="chatModePanel">
+        <div class="chatLogWrap">
+          <div id="log"></div>
+          <button class="newMessagesBtn isHidden" id="btnNewMessages" type="button" aria-live="polite" aria-label="새 메시지로 이동">새 메시지 ↓</button>
         </div>
+        <div style="margin-top:10px;">
+          <textarea id="msg" placeholder="메시지 입력 (Enter=전송 / Shift+Enter=줄바꿈)&#10;🔥오늘도 열글빡글🔥"></textarea>
+          <div class="quickRow">
+            <button class="btnReset" id="btnResetToday">🧹초기화</button>
+            <button class="btnGhost" id="btnStartSnap">🚩시작(기준)</button>
+            <button class="btnGhost" id="btnNewEpisode">🆕새편</button>
+            <button class="btnStart" id="sendBtn">전송</button>
+          </div>
+
+          <div class="hint">
+            스냅샷(현재 글자수)은 직전 스냅샷과의 차이만 누적돼요. <br/>🚩시작(기준)=오늘 기준 스냅샷 저장 · 🧹초기화=오늘 누적 0 · 🆕새편=새 회차를 0자부터
+          </div>
+        </div>
+      </div>
+
+      <div class="recordModePanel isHidden" id="sheetModePanel">
+        <div class="sheetDirectHead">
+          <div>
+            <div class="sheetDirectTitle">오늘 뽀모 시트 직접 입력</div>
+            <div class="sheetDirectSub">채팅은 보이지 않으며, 상단 닉네임과 같은 칸만 안전하게 입력할 수 있어요.</div>
+          </div>
+          <button class="btnGhost" id="btnDirectRefresh" type="button">↻ 새로고침</button>
+        </div>
+        <div class="sheetDirectStatus" id="sheetDirectStatus">시트 입력 모드를 열면 오늘 시트를 불러옵니다.</div>
+        <div class="sheetBlockList" id="sheetBlockList"></div>
+        <div class="sheetEntryHint">빈 칸에 처음 저장하면 상단 닉네임으로 등록됩니다. 기존 다른 닉네임 칸은 앱에서 수정할 수 없습니다.</div>
       </div>
     </div>
   </div>
@@ -1083,7 +1202,7 @@
 
 <script>
   // =====================
-  // v4.0: 호스트 없는 KST 24시간 자동 타이머 + 영속 기록 큐
+  // v4.1: KST 자동 타이머 + 영속 기록 큐 + 채팅/시트 직접 입력 전환
   // - 닉네임이 설정된 앱 입장: 즉시 online 등록
   // - background: 접속 유지(heartbeat로 접속 여부를 판단하지 않음)
   // - 퇴장/창 종료/Firebase onDisconnect: 즉시 offline 정리
@@ -1095,6 +1214,8 @@
   const AUTO_CYCLE_SEC = WORK_SEC + BREAK_SEC;
   const KST_OFFSET_MS = 9 * 60 * 60 * 1000;
   const CMD_QUEUE_STORAGE_KEY = 'VENT_CMD_QUEUE_V1';
+  const RECORD_MODE_STORAGE_KEY = 'VENT_RECORD_MODE_V1';
+  const DIRECT_QUEUE_STORAGE_KEY = 'VENT_DIRECT_QUEUE_V1';
   let sessionId = null;
   let pom = null;
 
@@ -1143,6 +1264,13 @@
   const cmdQueue_ = [];
   let cmdWorking_ = false;
   let cmdQueueRestored_ = false;
+  let recordMode_ = 'chat';
+  let directSheetLoading_ = false;
+  let directSheetState_ = null;
+  const directQueue_ = [];
+  let directQueueWorking_ = false;
+  let directQueueRestored_ = false;
+  let recordRpcOwner_ = '';
 
   // sound
   let soundEnabled = true;
@@ -1744,9 +1872,13 @@ let guideCache_ = { text:'', updatedAt:0, by:'' };
 const GUIDE_DEFAULT_TEXT_ = "⏰ 뽀모 사용 가이드⚡\n• 타이머 : 한국시간 자정부터 작업 25분 → 휴식 5분 자동 반복\n• 언제 접속해도 모두 같은 시간에 맞춰 바로 참여\n• 알림 : 소리 켜기/끄기 (알람 들으시려면 한번 클릭해주셔야 함!)\n\n✍기록 방법\n• 기준 - 현재 스냅샷 기준 확인 가능\n•기준이 없다는 메시지 확인 후 채팅으로 시작할 글자수 남기기\n 🔥0부터 시작해도 ok, 3788처럼 시작할 글자수도 ok!\n• 기준이 잡힌 후부터는 현재까지 쓴 글자수를 채팅으로 남기기\n 🔥자동으로 누적 기록 * +684 (현재 0 / 오늘 누적 684)\n• 초기화 : 오늘 기록 초기화(누적/스냅샷/기준)\n• 새편 : 새 회차(0부터) 시작(기존 누적 글자수에 자동 포함)\n\n• /0 : 기본 작품: 한 작품만 기록하실 땐 따로 명령어 없이 숫자만 쭉쭉 입력(먼슬리에 전체 통계 확인 가능)\n• /1, /2, /3... : 다수 작품 기록 가능!  \n 🔥/1 시작 1000, 2000...\n 🔥/2 시작 0, 1000, 2000...\n 🔥작업하다가 다시 기본 작품에 글자수를 넣고 싶을 땐 /0 글자수!!!\n\n💬 채팅 명령어\n• 수정 : 수정 모드 (기록X, 시스템 메시지만)\n• 퇴고 : 퇴고 모드 (기록X, 시스템 메시지만)\n• 시놉 : 시놉 작성 중 (기록X, 시스템 메시지만)\n• 트릿 : 트릿 작성 중 (기록X, 시스템 메시지만)\n• 자료조사 : 자료 조사 중 (기록X, 시스템 메시지만)\n• 인풋 : 인풋 중 (기록X, 시스템 메시지만)\n\n😻그 외 ( 또 다른 문의가 있을 시 방장에게 1:1 줍쇼!! )\n• 호스트 없이 24시간 자동으로 타이머가 돌아갑니다\n• 뽀모를 마무리하고 나가실 땐 🏃‍♂️나가기 버튼 꼭 눌러주시기";
 
 function upgradeLegacyGuideText_(text){
-  return String(text || '')
+  let out = String(text || '')
     .replace('• 시작 : 작업 25분 → 휴식 5분 자동 반복\n• 정지 : 타이머 일시 정지\n• 리셋 : 현재 사이클 초기화', '• 타이머 : 한국시간 자정부터 작업 25분 → 휴식 5분 자동 반복\n• 언제 접속해도 모두 같은 시간에 맞춰 바로 참여')
     .replace('• 호스트를 기준으로 뽀모 타이머가 돌아갑니다', '• 호스트 없이 24시간 자동으로 타이머가 돌아갑니다');
+  if (!out.includes('📋 시트 직접 입력')) {
+    out = out.replace('✍기록 방법\n', '✍기록 방법\n• 💬 채팅 기록 / 📋 시트 직접 입력 탭 중 원하는 방식을 선택\n• 시트 직접 입력 모드에서는 채팅이 숨겨지고 오늘 뽀모 시트에 바로 반영\n');
+  }
+  return out;
 }
 
 function guidePreviewText_(t){
@@ -1759,7 +1891,7 @@ function guidePreviewText_(t){
 function guideSetPreview_(){
   const el = document.querySelector('#btnGuide .preview');
   if (!el) return;
-  const t = String(guideCache_.text || '').trim() || GUIDE_DEFAULT_TEXT_;
+  const t = upgradeLegacyGuideText_(String(guideCache_.text || '').trim() || GUIDE_DEFAULT_TEXT_);
   el.textContent = guidePreviewText_(t);
 }
 
@@ -1788,7 +1920,7 @@ function guideTextToHtml_(txt){
 
 function guideRenderHtml_(mode){
   const tRaw = String(guideCache_.text || '').trim();
-  const t = tRaw || GUIDE_DEFAULT_TEXT_;
+  const t = upgradeLegacyGuideText_(tRaw || GUIDE_DEFAULT_TEXT_);
   const by = String(guideCache_.by || '').trim();
   const up = Number(guideCache_.updatedAt || 0);
 
@@ -1797,7 +1929,7 @@ function guideRenderHtml_(mode){
     : `<div style="font-size:12px; opacity:.75; font-weight:800; margin-top:10px;">(아직 저장된 가이드가 없어서 기본 가이드를 보여주고 있어요)</div>`;
 
   if (mode === 'edit'){
-    const v = escapeHtml(tRaw || GUIDE_DEFAULT_TEXT_);
+    const v = escapeHtml(upgradeLegacyGuideText_(tRaw || GUIDE_DEFAULT_TEXT_));
     return `
       <div style="text-align:left;">
         <div style="font-weight:900; margin-bottom:8px;">👻 가이드 수정</div>
@@ -1972,14 +2104,24 @@ window.guideSave = async function(){
 
     if (presenceSnapshotSyncTimer) clearTimeout(presenceSnapshotSyncTimer);
     presenceSnapshotSyncTimer = setTimeout(async ()=>{
+      if (recordRpcOwner_ || cmdWorking_ || directQueueWorking_) {
+        lastPresenceSnapshotHash = '';
+        schedulePresenceSnapshotSync_(clean);
+        return;
+      }
       try{
         const res = await gasCallPromise_('syncPresenceSnapshot', [clean], 10000);
+        if (res && res.busy) {
+          lastPresenceSnapshotHash = '';
+          schedulePresenceSnapshotSync_(clean);
+          return;
+        }
         if (!firebasePresenceReady) applyServerPresence_(res);
       }catch(e){
         // Firebase 화면 원본은 이미 정상이라 서버 복제 실패가 UI를 0명으로 만들지 않음
         lastPresenceSnapshotHash = '';
       }
-    }, 350);
+    }, 3000);
   }
 
   function startPresenceLive_(roomId){
@@ -2296,6 +2438,35 @@ window.guideSave = async function(){
   // - Firebase 메시지 키를 고유 requestId로 사용해 서버 재시도 중복 기록을 방지
   // - localStorage에 보관해 새로고침/앱 재실행 뒤에도 미처리 기록을 자동 복구
   // =====================
+  function setRecordQueueStatus_(text, kind, autoHideMs){
+    const el = $('recordQueueStatus');
+    if (!el) return;
+    const msg = String(text || '');
+    el.textContent = msg;
+    el.classList.toggle('isHidden', !msg);
+    el.classList.toggle('isOk', kind === 'ok');
+    el.classList.toggle('isError', kind === 'error');
+    const stamp = Date.now();
+    el.dataset.stamp = String(stamp);
+    if (msg && autoHideMs) {
+      setTimeout(()=>{
+        if (el.dataset.stamp === String(stamp)) setRecordQueueStatus_('');
+      }, autoHideMs);
+    }
+  }
+
+  async function acquireRecordRpc_(owner){
+    const who = String(owner || 'record');
+    while (recordRpcOwner_ && recordRpcOwner_ !== who) {
+      await new Promise(r=>setTimeout(r, 180));
+    }
+    recordRpcOwner_ = who;
+  }
+
+  function releaseRecordRpc_(owner){
+    if (recordRpcOwner_ === String(owner || 'record')) recordRpcOwner_ = '';
+  }
+
   function persistCommandQueue_(){
     try{
       const safe = cmdQueue_.map(job => ({
@@ -2337,18 +2508,14 @@ window.guideSave = async function(){
   }
 
   function runProcessCommandOnly_(sid, user, msg, requestId){
-    return new Promise((resolve, reject) => {
-      google.script.run
-        .withSuccessHandler(resolve)
-        .withFailureHandler(reject)
-        .processCommandOnly(sid, user, msg, requestId);
-    });
+    return gasCallPromise_('processCommandOnly', [sid, user, msg, requestId], 35000);
   }
 
   function enqueueCommand_(sid, user, msg, requestId, messageKey){
     if (!requestId || cmdQueue_.some(j => j.requestId === requestId)) return;
     cmdQueue_.push({ sid, user, msg, requestId, messageKey, tries: 0, notified: false, backoff: 1200, createdAtMs: Date.now() });
     persistCommandQueue_();
+    setRecordQueueStatus_('시트 기록을 반영하는 중…');
     if (!cmdWorking_) processCmdQueue_();
   }
 
@@ -2367,7 +2534,13 @@ window.guideSave = async function(){
       }
 
       try{
-        const res = await runProcessCommandOnly_(job.sid, job.user, job.msg, job.requestId);
+        let res;
+        await acquireRecordRpc_('chat');
+        try{
+          res = await runProcessCommandOnly_(job.sid, job.user, job.msg, job.requestId);
+        }finally{
+          releaseRecordRpc_('chat');
+        }
 
         if (res && res.ok === false && res.reason === 'SESSION_CHANGED') {
           try{ await fbSend_('SYSTEM', '⚠️ 세션이 바뀌어 이 기록은 자동 반영하지 않았어요. 해당 값만 다시 입력해 주세요.', 'system', `${job.messageKey}_result`); }catch(e){}
@@ -2379,7 +2552,7 @@ window.guideSave = async function(){
           job.tries += 1;
           if (!job.notified){
             job.notified = true;
-            try{ await fbSend_('SYSTEM', '⏳ 서버가 잠깐 바빠요. 기록 요청을 안전하게 보관하고 자동 재시도 중이에요.', 'system', `${job.messageKey}_pending`); }catch(e){}
+            setRecordQueueStatus_('기록 서버가 잠깐 바빠요. 요청을 이 기기에 보관하고 자동 재시도 중입니다.');
           }
           job.backoff = Math.min(12000, Math.floor(job.backoff * 1.35) + 200);
           persistCommandQueue_();
@@ -2393,15 +2566,18 @@ window.guideSave = async function(){
         }
 
         finishCommandJob_();
+        setRecordQueueStatus_('시트 기록이 정상 반영됐어요.', 'ok', 1800);
 
       } catch(e){
+        releaseRecordRpc_('chat');
         job.tries += 1;
+        console.warn('[POMO record retry]', job.tries, e && e.message ? e.message : e);
         if (!job.notified){
           job.notified = true;
-          try{ await fbSend_('SYSTEM', '📡 서버 연결이 잠깐 불안정해요. 기록 요청을 기기에 보관하고 자동 재시도 중이에요.', 'system', `${job.messageKey}_pending`); }catch(_e){}
+          setRecordQueueStatus_('서버 응답이 잠깐 늦어요. 기록 요청을 이 기기에 보관하고 자동 재시도 중입니다.');
         }
         if (job.tries === 8){
-          try{ await fbSend_('SYSTEM', '💾 아직 서버 응답이 없지만 기록 요청은 이 기기에 보관되어 있어요. 앱을 다시 열어도 자동 재시도합니다.', 'system', `${job.messageKey}_pending`); }catch(_e){}
+          setRecordQueueStatus_('아직 서버 응답이 없지만 요청은 안전하게 보관되어 있어요. 앱을 다시 열어도 자동 재시도합니다.');
         }
         job.backoff = Math.min(30000, Math.floor(job.backoff * 1.5) + 400);
         persistCommandQueue_();
@@ -2498,7 +2674,7 @@ window.guideSave = async function(){
   let pingBackoff = 0;
 
   function nextPingMs_(){
-    return document.hidden ? 180000 : 60000;
+    return document.hidden ? 300000 : 120000;
   }
 
   function schedulePing_(){
@@ -2508,6 +2684,7 @@ window.guideSave = async function(){
 
   async function joinOrPing_(){
     if (isStopped) return;
+    if (recordRpcOwner_ || cmdWorking_ || directQueueWorking_) { schedulePing_(); return; }
     try{
       const fnName = presenceRegisteredOnServer ? 'joinOrPing' : 'enterPresence';
       let res;
@@ -2544,6 +2721,9 @@ window.guideSave = async function(){
         initGuide_(sessionId);
         restoreCommandQueue_();
         if (cmdQueue_.length && !cmdWorking_) processCmdQueue_();
+        restoreDirectQueue_();
+        if (directQueue_.length && !directQueueWorking_) processDirectQueue_();
+        if (recordMode_ === 'sheet') loadDirectSheet_();
       }
 
       renderTop();
@@ -2599,6 +2779,223 @@ window.guideSave = async function(){
         sending = false;
       }
     })();
+  }
+
+  // =====================
+  // 기록 방식 전환 + 오늘 시트 직접 입력
+  // =====================
+  function directSetStatus_(text, kind){
+    const el = $('sheetDirectStatus');
+    if (!el) return;
+    el.textContent = String(text || '');
+    el.classList.toggle('isOk', kind === 'ok');
+    el.classList.toggle('isError', kind === 'error');
+  }
+
+  function directRequestId_(){
+    try{
+      if (window.crypto && typeof window.crypto.randomUUID === 'function') {
+        return `direct|${sessionId || 'none'}|${window.crypto.randomUUID()}`;
+      }
+    }catch(e){}
+    return `direct|${sessionId || 'none'}|${CLIENT_ID}|${Date.now()}|${Math.random().toString(36).slice(2)}`;
+  }
+
+  function setRecordMode_(mode, options){
+    const opts = options || {};
+    recordMode_ = mode === 'sheet' ? 'sheet' : 'chat';
+    const isSheet = recordMode_ === 'sheet';
+    $('chatModePanel').classList.toggle('isHidden', isSheet);
+    $('sheetModePanel').classList.toggle('isHidden', !isSheet);
+    $('btnModeChat').classList.toggle('isActive', !isSheet);
+    $('btnModeSheet').classList.toggle('isActive', isSheet);
+    $('btnModeChat').setAttribute('aria-selected', isSheet ? 'false' : 'true');
+    $('btnModeSheet').setAttribute('aria-selected', isSheet ? 'true' : 'false');
+    try{ localStorage.setItem(RECORD_MODE_STORAGE_KEY, recordMode_); }catch(e){}
+    if (isSheet && !opts.skipLoad) loadDirectSheet_();
+  }
+
+  function directNormalizeName_(name){
+    return String(name || '').trim().replace(/\s+/g, ' ');
+  }
+
+  function renderDirectSheet_(){
+    const root = $('sheetBlockList');
+    if (!root) return;
+    const state = directSheetState_;
+    if (!state || !Array.isArray(state.blocks)) {
+      root.innerHTML = '';
+      return;
+    }
+
+    const viewer = directNormalizeName_(myName());
+    root.innerHTML = state.blocks.map((block)=>{
+      const blockName = directNormalizeName_(block.name);
+      const empty = !blockName;
+      const mine = !!viewer && !!blockName && blockName === viewer;
+      const locked = !!blockName && !mine;
+      const canEdit = !!viewer && !locked;
+      const cardClass = locked ? 'isLocked' : (mine ? 'isMine' : '');
+      const displayName = blockName || (viewer ? `빈 칸 · ${viewer}로 등록 가능` : '빈 칸 · 닉네임 필요');
+      const baseValue = block.base == null ? '' : String(block.base);
+      return `
+        <div class="sheetBlock ${cardClass}" data-block-index="${Number(block.index)}">
+          <div class="sheetBlockTop">
+            <div class="sheetBlockName" title="${escapeHtml(displayName)}">${escapeHtml(displayName)}</div>
+            <div class="sheetBlockTotal">누적 ${Number(block.total || 0).toLocaleString('ko-KR')}자</div>
+          </div>
+          <div class="sheetBlockMeta">${escapeHtml(state.sheetName || '')} · ${escapeHtml(block.position || block.id || '')}${locked ? ' · 다른 사용자 칸' : ''}</div>
+          <div class="sheetEntryGrid">
+            <div class="sheetEntryLine">
+              <label>기준</label>
+              <input inputmode="numeric" pattern="[0-9]*" data-direct-input="base" value="${escapeHtml(baseValue)}" placeholder="시작 글자수" ${canEdit ? '' : 'disabled'} />
+              <button type="button" data-direct-save="1" data-kind="base" ${canEdit ? '' : 'disabled'}>저장</button>
+            </div>
+            <div class="sheetEntryLine">
+              <label>현재</label>
+              <input inputmode="numeric" pattern="[0-9]*" data-direct-input="current" placeholder="현재 글자수" ${canEdit ? '' : 'disabled'} />
+              <button type="button" data-direct-save="1" data-kind="current" ${canEdit ? '' : 'disabled'}>반영</button>
+            </div>
+          </div>
+        </div>`;
+    }).join('');
+  }
+
+  async function loadDirectSheet_(){
+    if (directSheetLoading_) return;
+    if (!sessionId) {
+      directSetStatus_('서버 연결을 준비하고 있어요. 잠시 후 자동으로 불러옵니다.');
+      return;
+    }
+    directSheetLoading_ = true;
+    directSetStatus_('오늘 뽀모 시트를 불러오는 중…');
+    const refreshBtn = $('btnDirectRefresh');
+    if (refreshBtn) refreshBtn.disabled = true;
+    try{
+      const res = await gasCallPromise_('getDirectSheetState', [sessionId], 15000);
+      if (!res || res.ok === false) {
+        if (res && res.reason === 'SESSION_CHANGED') {
+          pingBackoff = 0;
+          joinOrPing_();
+        }
+        throw new Error((res && res.message) || '오늘 시트를 불러오지 못했습니다.');
+      }
+      directSheetState_ = res;
+      renderDirectSheet_();
+      directSetStatus_(`${res.sheetName} 시트와 동기화됐어요. 상단 닉네임과 같은 칸만 입력할 수 있습니다.`, 'ok');
+    }catch(e){
+      directSetStatus_(e && e.message ? e.message : '시트를 불러오지 못했습니다.', 'error');
+    }finally{
+      directSheetLoading_ = false;
+      if (refreshBtn) refreshBtn.disabled = false;
+    }
+  }
+
+  function persistDirectQueue_(){
+    try{ localStorage.setItem(DIRECT_QUEUE_STORAGE_KEY, JSON.stringify(directQueue_)); }catch(e){}
+  }
+
+  function restoreDirectQueue_(){
+    if (directQueueRestored_) return;
+    directQueueRestored_ = true;
+    try{
+      const parsed = JSON.parse(localStorage.getItem(DIRECT_QUEUE_STORAGE_KEY) || '[]');
+      const cutoff = Date.now() - 48 * 60 * 60 * 1000;
+      for (const raw of (Array.isArray(parsed) ? parsed : [])) {
+        if (!raw || !raw.requestId || Number(raw.createdAtMs || 0) < cutoff) continue;
+        if (!directQueue_.some(j => j.requestId === raw.requestId)) directQueue_.push(raw);
+      }
+      persistDirectQueue_();
+    }catch(e){ try{ localStorage.removeItem(DIRECT_QUEUE_STORAGE_KEY); }catch(_e){} }
+  }
+
+  function finishDirectJob_(){
+    directQueue_.shift();
+    persistDirectQueue_();
+  }
+
+  function enqueueDirectJob_(job){
+    if (!job || !job.requestId || directQueue_.some(j => j.requestId === job.requestId)) return;
+    directQueue_.push({ ...job, tries:0, backoff:1200, createdAtMs:Date.now() });
+    persistDirectQueue_();
+    if (!directQueueWorking_) processDirectQueue_();
+  }
+
+  async function processDirectQueue_(){
+    if (directQueueWorking_) return;
+    directQueueWorking_ = true;
+    try{
+      while (directQueue_.length){
+        const job = directQueue_[0];
+        if (!job || !job.requestId) { finishDirectJob_(); continue; }
+        if (sessionId && job.sid !== sessionId) {
+          directSetStatus_('날짜가 바뀌어 이전 날짜의 미처리 시트 입력은 자동 반영하지 않았어요. 값을 다시 확인해 주세요.', 'error');
+          finishDirectJob_();
+          continue;
+        }
+        try{
+          let res;
+          await acquireRecordRpc_('direct');
+          try{
+            res = await gasCallPromise_('saveDirectSheetEntry', [job.sid, job.name, job.index, job.kind, job.value, job.requestId], 35000);
+          }finally{
+            releaseRecordRpc_('direct');
+          }
+          if (res && res.busy) throw new Error('SERVER_BUSY');
+          if (!res || res.ok === false) {
+            if (res && res.reason === 'SESSION_CHANGED') {
+              finishDirectJob_();
+              directSetStatus_('날짜가 바뀌었습니다. 오늘 시트를 다시 불러와 입력해 주세요.', 'error');
+              pingBackoff = 0;
+              joinOrPing_();
+              continue;
+            }
+            const msg = (res && res.message) || '시트 입력을 반영하지 못했습니다.';
+            finishDirectJob_();
+            directSetStatus_(msg, 'error');
+            await loadDirectSheet_();
+            continue;
+          }
+          finishDirectJob_();
+          directSetStatus_(res.message || '시트에 반영했습니다.', 'ok');
+          if (!directQueue_.length) await loadDirectSheet_();
+        }catch(e){
+          releaseRecordRpc_('direct');
+          job.tries = Number(job.tries || 0) + 1;
+          job.backoff = Math.min(30000, Math.floor(Number(job.backoff || 1200) * 1.5) + 400);
+          persistDirectQueue_();
+          directSetStatus_(job.tries >= 3
+            ? '입력 요청을 이 기기에 안전하게 보관했어요. 서버 연결이 돌아오면 자동 반영합니다.'
+            : '서버 연결이 잠깐 늦어 시트 입력을 자동 재시도 중이에요.');
+          await new Promise(r => setTimeout(r, job.backoff + Math.floor(Math.random() * 500)));
+        }
+      }
+    }finally{
+      directQueueWorking_ = false;
+    }
+  }
+
+  function handleDirectSave_(button){
+    if (!button || !sessionId) return;
+    const card = button.closest('.sheetBlock');
+    if (!card) return;
+    const kind = String(button.dataset.kind || '');
+    const input = card.querySelector(`[data-direct-input="${kind}"]`);
+    const raw = String(input && input.value || '').replace(/,/g, '').trim();
+    const name = directNormalizeName_(myName());
+    if (!name) { directSetStatus_('상단 닉네임을 먼저 입력해 주세요.', 'error'); return; }
+    if (!/^\d{1,12}$/.test(raw)) { directSetStatus_('0 이상의 숫자만 입력해 주세요.', 'error'); return; }
+    const index = Number(card.dataset.blockIndex);
+    enqueueDirectJob_({
+      sid:sessionId,
+      name,
+      index,
+      kind,
+      value:Number(raw),
+      requestId:directRequestId_()
+    });
+    button.disabled = true;
+    directSetStatus_('시트에 안전하게 반영하는 중…');
   }
 
   // =====================
@@ -3263,6 +3660,13 @@ window.guideSave = async function(){
   // Button wire-up
   // =====================
   $('sendBtn').addEventListener('click', send);
+  $('btnModeChat').addEventListener('click', ()=>setRecordMode_('chat'));
+  $('btnModeSheet').addEventListener('click', ()=>setRecordMode_('sheet'));
+  $('btnDirectRefresh').addEventListener('click', loadDirectSheet_);
+  $('sheetBlockList').addEventListener('click', (e)=>{
+    const btn = e.target && e.target.closest ? e.target.closest('[data-direct-save="1"]') : null;
+    if (btn) handleDirectSave_(btn);
+  });
   // 🚩 시작 스냅샷(기준) 버튼
   $('btnStartSnap').addEventListener('click', () => {
     const raw = prompt('🚩 시작 스냅샷(현재 글자수)을 입력해줘.\n예: 1234');
@@ -3696,6 +4100,7 @@ window.guideSave = async function(){
 
     $('user').addEventListener('input', async ()=>{
       localStorage.setItem('VENT_NAME_V2', myName());
+      renderDirectSheet_();
       const nm = String(myName()).trim().slice(0,12) || '익명';
 
       if (presenceStarted && sessionId && presenceUid){
@@ -3711,12 +4116,13 @@ window.guideSave = async function(){
       if (presenceNameSyncTimer) clearTimeout(presenceNameSyncTimer);
       presenceNameSyncTimer = setTimeout(async ()=>{
         if (isStopped || presenceLeaving) return;
+        if (recordRpcOwner_ || cmdWorking_ || directQueueWorking_) return;
         try{
           const res = await gasCallPromise_('enterPresence', [CLIENT_ID, nm], 10000);
           presenceRegisteredOnServer = true;
           if (!firebasePresenceReady) applyServerPresence_(res);
         }catch(e){}
-      }, 650);
+      }, 2500);
     });
 
     initLogSizer();
@@ -3724,6 +4130,8 @@ window.guideSave = async function(){
     updateNoticeButton_();
     // Firebase/시트와 무관한 브라우저 로컬 MP3만 조용히 복원
     loadCustomSoundsFromBrowser_();
+    const savedRecordMode = localStorage.getItem(RECORD_MODE_STORAGE_KEY) || 'chat';
+    setRecordMode_(savedRecordMode, { skipLoad:true });
 
     // 첫 제스처 확보
     window.addEventListener('pointerdown', markUserGesture, { once:true });
