@@ -1,7 +1,7 @@
 // 마끝마 뽀모 PWA Service Worker
-// v4.1 — 채팅 기록 / 시트 직접 입력 전환
+// v4.2 — 직접 입력 속도·닉네임 위치·화면 높이 개선
 
-const CACHE_NAME = 'pomo-github-standalone-v4-1-20260801-direct-sheet-v1';
+const CACHE_NAME = 'pomo-github-standalone-v4-2-20260801-direct-sheet-fast-v1';
 const STATIC_ASSETS = [
   './offline.html',
   './manifest.webmanifest',

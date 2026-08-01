@@ -1,5 +1,5 @@
 <!doctype html>
-<!-- POMO GitHub standalone v4.1 / 2026-08-01 / 채팅·시트 직접 입력 전환 -->
+<!-- POMO GitHub standalone v4.2 / 2026-08-01 / 직접 입력 속도·닉네임 위치·화면 높이 개선 -->
 <html>
 <head>
   <meta charset="utf-8"/>
@@ -10,11 +10,11 @@
   <link rel="manifest" href="./manifest.webmanifest" />
   <link rel="icon" href="./icons/icon-192.png" />
   <link rel="apple-touch-icon" href="./icons/icon-192.png" />
-  <script src="./config.js?v=20260801-direct-sheet-v4-1"></script>
+  <script src="./config.js?v=20260801-direct-sheet-v4-2"></script>
   <script>
   (function(){
     'use strict';
-    const VERSION = 'github-standalone-v4.1-direct-sheet-20260801';
+    const VERSION = 'github-standalone-v4.2-direct-sheet-fast-20260801';
     const cfg = window.POMO_APP_CONFIG || {};
     const endpoint = String(cfg.POMO_APP_URL || '').trim();
     const isMissing = !endpoint || endpoint.includes('여기에_Apps_Script') || endpoint.includes('YOUR_');
@@ -218,7 +218,7 @@
       padding: 12px;
     }
     .timer{
-      padding: 14px 12px 12px;
+      padding: 5px 12px 5px;
       overflow:hidden;
       font-variant-numeric: tabular-nums;
     }
@@ -240,7 +240,7 @@
 #time{ text-align: center; }
 .phase{
       width: fit-content;
-      margin: 0 auto 10px;
+      margin: 0 auto;
       padding: 8px 14px;
       border-radius: 999px;
       border: 1px solid var(--line);
@@ -262,13 +262,6 @@
       gap:10px;
       justify-content:center;
       flex-wrap:wrap;
-    }
-    .autoTimerNote{
-      text-align:center;
-      color:var(--muted);
-      font-size:12px;
-      font-weight:800;
-      line-height:1.5;
     }
     button{
       border:0;
@@ -638,6 +631,8 @@
 }
 .sheetBlock.isMine{ border-color:#9fddcf; box-shadow:0 0 0 2px rgba(159,221,207,.17); }
 .sheetBlock.isLocked{ opacity:.62; background:#fafafa; }
+.sheetBlock.isPending{ border-color:#f2c45f; box-shadow:0 0 0 2px rgba(242,196,95,.18); }
+.sheetBlock.isPending .sheetEntryLine button{ opacity:.62; cursor:wait; }
 .sheetBlockTop{ display:flex; justify-content:space-between; align-items:flex-start; gap:8px; }
 .sheetBlockName{ font-size:13px; font-weight:950; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
 .sheetBlockTotal{ font-size:12px; font-weight:950; color:#16715c; white-space:nowrap; }
@@ -885,6 +880,7 @@
   color:var(--text);
   font-variant-numeric:tabular-nums;
 }
+.menuSliderRange{ margin-top:8px; accent-color:#e88ab8; cursor:pointer; }
 .stepperHint{
   margin-top:6px;
   text-align:center;
@@ -1091,7 +1087,8 @@
               <div class="stepperReadout" id="logSizeVal" aria-live="polite">260px</div>
               <button class="stepperBtn" id="logSizeUp" type="button" aria-label="채팅창 높이기">＋</button>
             </div>
-            <div class="stepperHint">한 번에 1px · 길게 누르면 연속 조절</div>
+            <input class="menuSliderRange" id="logSize" type="range" min="180" max="1000" step="1" value="260" aria-label="채팅창 높이 슬라이더" />
+            <div class="stepperHint">+/− 버튼 · 슬라이더 · 숫자 위 마우스 휠 모두 가능</div>
           </div>
         </div>
       </div>
@@ -1100,7 +1097,6 @@
     <div class="card timer">
       <div class="time" id="time">25:00</div>
       <div class="phase" id="phase">🔥작업 중🔥</div>
-      <div class="autoTimerNote">한국시간 자정부터 작업 25분 · 휴식 5분이 자동 반복됩니다.</div>
       <!-- 구버전 스크립트 안전 호환용 숨김 요소: 타이머 제어 기능은 사용하지 않음 -->
       <div class="controls" hidden aria-hidden="true">
         <button id="btnStart" type="button" disabled></button>
@@ -1267,6 +1263,7 @@
   let recordMode_ = 'chat';
   let directSheetLoading_ = false;
   let directSheetState_ = null;
+  const directPendingBlocks_ = Object.create(null);
   const directQueue_ = [];
   let directQueueWorking_ = false;
   let directQueueRestored_ = false;
@@ -2831,20 +2828,22 @@ window.guideSave = async function(){
     const viewer = directNormalizeName_(myName());
     root.innerHTML = state.blocks.map((block)=>{
       const blockName = directNormalizeName_(block.name);
-      const empty = !blockName;
       const mine = !!viewer && !!blockName && blockName === viewer;
       const locked = !!blockName && !mine;
-      const canEdit = !!viewer && !locked;
-      const cardClass = locked ? 'isLocked' : (mine ? 'isMine' : '');
+      const pending = directPendingBlocks_[String(block.index)] || null;
+      const canEdit = !!viewer && !locked && !pending;
+      const cardClass = [locked ? 'isLocked' : (mine ? 'isMine' : ''), pending ? 'isPending' : ''].filter(Boolean).join(' ');
       const displayName = blockName || (viewer ? `빈 칸 · ${viewer}로 등록 가능` : '빈 칸 · 닉네임 필요');
       const baseValue = block.base == null ? '' : String(block.base);
+      const currentValue = pending && pending.kind === 'current' ? String(pending.value) : '';
+      const pendingLabel = pending ? ` · ${pending.kind === 'base' ? '기준' : '현재'} ${Number(pending.value).toLocaleString('ko-KR')}자 반영 중` : '';
       return `
         <div class="sheetBlock ${cardClass}" data-block-index="${Number(block.index)}">
           <div class="sheetBlockTop">
             <div class="sheetBlockName" title="${escapeHtml(displayName)}">${escapeHtml(displayName)}</div>
             <div class="sheetBlockTotal">누적 ${Number(block.total || 0).toLocaleString('ko-KR')}자</div>
           </div>
-          <div class="sheetBlockMeta">${escapeHtml(state.sheetName || '')} · ${escapeHtml(block.position || block.id || '')}${locked ? ' · 다른 사용자 칸' : ''}</div>
+          <div class="sheetBlockMeta">${escapeHtml(state.sheetName || '')} · ${escapeHtml(block.position || block.id || '')}${locked ? ' · 다른 사용자 칸' : ''}${escapeHtml(pendingLabel)}</div>
           <div class="sheetEntryGrid">
             <div class="sheetEntryLine">
               <label>기준</label>
@@ -2853,7 +2852,7 @@ window.guideSave = async function(){
             </div>
             <div class="sheetEntryLine">
               <label>현재</label>
-              <input inputmode="numeric" pattern="[0-9]*" data-direct-input="current" placeholder="현재 글자수" ${canEdit ? '' : 'disabled'} />
+              <input inputmode="numeric" pattern="[0-9]*" data-direct-input="current" value="${escapeHtml(currentValue)}" placeholder="현재 글자수" ${canEdit ? '' : 'disabled'} />
               <button type="button" data-direct-save="1" data-kind="current" ${canEdit ? '' : 'disabled'}>반영</button>
             </div>
           </div>
@@ -2861,14 +2860,15 @@ window.guideSave = async function(){
     }).join('');
   }
 
-  async function loadDirectSheet_(){
+  async function loadDirectSheet_(options){
+    const opts = options || {};
     if (directSheetLoading_) return;
     if (!sessionId) {
-      directSetStatus_('서버 연결을 준비하고 있어요. 잠시 후 자동으로 불러옵니다.');
+      if (!opts.silent) directSetStatus_('서버 연결을 준비하고 있어요. 잠시 후 자동으로 불러옵니다.');
       return;
     }
     directSheetLoading_ = true;
-    directSetStatus_('오늘 뽀모 시트를 불러오는 중…');
+    if (!opts.silent) directSetStatus_('오늘 뽀모 시트를 불러오는 중…');
     const refreshBtn = $('btnDirectRefresh');
     if (refreshBtn) refreshBtn.disabled = true;
     try{
@@ -2882,9 +2882,9 @@ window.guideSave = async function(){
       }
       directSheetState_ = res;
       renderDirectSheet_();
-      directSetStatus_(`${res.sheetName} 시트와 동기화됐어요. 상단 닉네임과 같은 칸만 입력할 수 있습니다.`, 'ok');
+      if (!opts.silent) directSetStatus_(`${res.sheetName} 시트와 동기화됐어요. 상단 닉네임과 같은 칸만 입력할 수 있습니다.`, 'ok');
     }catch(e){
-      directSetStatus_(e && e.message ? e.message : '시트를 불러오지 못했습니다.', 'error');
+      if (!opts.silent) directSetStatus_(e && e.message ? e.message : '시트를 불러오지 못했습니다.', 'error');
     }finally{
       directSheetLoading_ = false;
       if (refreshBtn) refreshBtn.disabled = false;
@@ -2914,6 +2914,47 @@ window.guideSave = async function(){
     persistDirectQueue_();
   }
 
+  function setDirectPending_(job, isPending){
+    if (!job || !Number.isInteger(Number(job.index))) return;
+    const key = String(Number(job.index));
+    if (isPending) directPendingBlocks_[key] = { kind:String(job.kind || ''), value:Number(job.value || 0) };
+    else delete directPendingBlocks_[key];
+    renderDirectSheet_();
+  }
+
+  function applyDirectOptimistic_(job){
+    if (!directSheetState_ || !Array.isArray(directSheetState_.blocks)) return;
+    const index = Number(job.index);
+    directSheetState_.blocks = directSheetState_.blocks.map((block)=>{
+      if (Number(block.index) !== index) return block;
+      const next = { ...block, name:block.name || job.name };
+      if (job.kind === 'base') {
+        next.base = Number(job.value);
+        next.total = 0;
+      }
+      return next;
+    });
+  }
+
+  function applyDirectResult_(job, res){
+    if (directSheetState_ && Array.isArray(directSheetState_.blocks) && res && res.block) {
+      directSheetState_.blocks = directSheetState_.blocks.map((block)=>
+        Number(block.index) === Number(job.index) ? res.block : block
+      );
+      if (res.sheetName) directSheetState_.sheetName = res.sheetName;
+    }
+    setDirectPending_(job, false);
+  }
+
+  function rollbackDirectOptimistic_(job){
+    if (job && job.previousBlock && directSheetState_ && Array.isArray(directSheetState_.blocks)) {
+      directSheetState_.blocks = directSheetState_.blocks.map((block)=>
+        Number(block.index) === Number(job.index) ? job.previousBlock : block
+      );
+    }
+    setDirectPending_(job, false);
+  }
+
   function enqueueDirectJob_(job){
     if (!job || !job.requestId || directQueue_.some(j => j.requestId === job.requestId)) return;
     directQueue_.push({ ...job, tries:0, backoff:1200, createdAtMs:Date.now() });
@@ -2928,8 +2969,10 @@ window.guideSave = async function(){
       while (directQueue_.length){
         const job = directQueue_[0];
         if (!job || !job.requestId) { finishDirectJob_(); continue; }
+        setDirectPending_(job, true);
         if (sessionId && job.sid !== sessionId) {
           directSetStatus_('날짜가 바뀌어 이전 날짜의 미처리 시트 입력은 자동 반영하지 않았어요. 값을 다시 확인해 주세요.', 'error');
+          rollbackDirectOptimistic_(job);
           finishDirectJob_();
           continue;
         }
@@ -2944,6 +2987,7 @@ window.guideSave = async function(){
           if (res && res.busy) throw new Error('SERVER_BUSY');
           if (!res || res.ok === false) {
             if (res && res.reason === 'SESSION_CHANGED') {
+              rollbackDirectOptimistic_(job);
               finishDirectJob_();
               directSetStatus_('날짜가 바뀌었습니다. 오늘 시트를 다시 불러와 입력해 주세요.', 'error');
               pingBackoff = 0;
@@ -2951,14 +2995,14 @@ window.guideSave = async function(){
               continue;
             }
             const msg = (res && res.message) || '시트 입력을 반영하지 못했습니다.';
+            rollbackDirectOptimistic_(job);
             finishDirectJob_();
             directSetStatus_(msg, 'error');
-            await loadDirectSheet_();
             continue;
           }
+          applyDirectResult_(job, res);
           finishDirectJob_();
           directSetStatus_(res.message || '시트에 반영했습니다.', 'ok');
-          if (!directQueue_.length) await loadDirectSheet_();
         }catch(e){
           releaseRecordRpc_('direct');
           job.tries = Number(job.tries || 0) + 1;
@@ -2986,16 +3030,22 @@ window.guideSave = async function(){
     if (!name) { directSetStatus_('상단 닉네임을 먼저 입력해 주세요.', 'error'); return; }
     if (!/^\d{1,12}$/.test(raw)) { directSetStatus_('0 이상의 숫자만 입력해 주세요.', 'error'); return; }
     const index = Number(card.dataset.blockIndex);
-    enqueueDirectJob_({
+    const previousBlock = directSheetState_ && Array.isArray(directSheetState_.blocks)
+      ? directSheetState_.blocks.find((block)=>Number(block.index) === index)
+      : null;
+    const job = {
       sid:sessionId,
       name,
       index,
       kind,
       value:Number(raw),
+      previousBlock:previousBlock ? { ...previousBlock } : null,
       requestId:directRequestId_()
-    });
-    button.disabled = true;
-    directSetStatus_('시트에 안전하게 반영하는 중…');
+    };
+    applyDirectOptimistic_(job);
+    setDirectPending_(job, true);
+    directSetStatus_('입력값을 먼저 표시했어요. 기존 시트 기록 흐름까지 안전하게 확인 중…');
+    enqueueDirectJob_(job);
   }
 
   // =====================
@@ -3608,6 +3658,7 @@ window.guideSave = async function(){
     const valEl = $('logSizeVal');
     const down = $('logSizeDown');
     const up = $('logSizeUp');
+    const slider = $('logSize');
     const minH = 180;
     const maxH = 1000;
     const stepH = 1;
@@ -3618,6 +3669,7 @@ window.guideSave = async function(){
       currentH = Math.max(minH, Math.min(maxH, Math.round(Number(next) / stepH) * stepH));
       logEl.style.height = currentH + 'px';
       valEl.textContent = currentH + 'px';
+      if (slider) slider.value = String(currentH);
       localStorage.setItem('VENT_LOG_H', String(currentH));
       if (down) down.disabled = currentH <= minH;
       if (up) up.disabled = currentH >= maxH;
@@ -3625,6 +3677,15 @@ window.guideSave = async function(){
     };
     bindHoldStepper_(down, -1, (dir)=>apply(currentH + dir * stepH));
     bindHoldStepper_(up, 1, (dir)=>apply(currentH + dir * stepH));
+    if (slider) slider.addEventListener('input', ()=>{
+      markUserGesture();
+      apply(Number(slider.value));
+    });
+    if (valEl) valEl.addEventListener('wheel', (event)=>{
+      event.preventDefault();
+      markUserGesture();
+      apply(currentH + (event.deltaY < 0 ? 10 : -10));
+    }, { passive:false });
     apply(currentH);
   }
 
