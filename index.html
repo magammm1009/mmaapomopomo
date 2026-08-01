@@ -1,5 +1,5 @@
 <!doctype html>
-<!-- POMO GitHub standalone v4.4.1 / 2026-08-01 / 느린 서버 기동 복구 -->
+<!-- POMO GitHub standalone v4.4.2 / 2026-08-01 / 시트 단일 읽기·최근 상태 복원 -->
 <html>
 <head>
   <meta charset="utf-8"/>
@@ -10,11 +10,11 @@
   <link rel="manifest" href="./manifest.webmanifest" />
   <link rel="icon" href="./icons/icon-192.png" />
   <link rel="apple-touch-icon" href="./icons/icon-192.png" />
-  <script src="./config.js?v=20260801-cold-start-v4-4-1"></script>
+  <script src="./config.js?v=20260801-sheet-read-v4-4-2"></script>
   <script>
   (function(){
     'use strict';
-    const VERSION = 'github-standalone-v4.4.1-cold-start-recovery-20260801';
+    const VERSION = 'github-standalone-v4.4.2-sheet-read-recovery-20260801';
     const cfg = window.POMO_APP_CONFIG || {};
     const endpoint = String(cfg.POMO_APP_URL || '').trim();
     const isMissing = !endpoint || endpoint.includes('여기에_Apps_Script') || endpoint.includes('YOUR_');
@@ -1223,6 +1223,8 @@
   const CMD_QUEUE_STORAGE_KEY = 'VENT_CMD_QUEUE_V1';
   const RECORD_MODE_STORAGE_KEY = 'VENT_RECORD_MODE_V1';
   const DIRECT_QUEUE_STORAGE_KEY = 'VENT_DIRECT_QUEUE_V1';
+  const DIRECT_STATE_STORAGE_KEY = 'VENT_DIRECT_STATE_LOCAL_V1';
+  const SESSION_ID_STORAGE_KEY = 'VENT_PERMANENT_SESSION_ID_V1';
   let sessionId = null;
   let pom = null;
 
@@ -2776,6 +2778,9 @@ window.guideSave = async function(){
         setTimeout(()=>{ try{ location.reload(); } catch(e){} }, 1800);
         return;
       }
+      if (res.sessionId) {
+        try{ localStorage.setItem(SESSION_ID_STORAGE_KEY, String(res.sessionId)); }catch(e){}
+      }
 
       hostName = '24H AUTO';
       iAmHost = false;
@@ -2890,6 +2895,31 @@ window.guideSave = async function(){
 
   function directNormalizeName_(name){
     return String(name || '').trim().replace(/\s+/g, ' ');
+  }
+
+  function directPersistLocalState_(){
+    if (!directSheetState_ || !Array.isArray(directSheetState_.blocks)) return;
+    try{
+      localStorage.setItem(DIRECT_STATE_STORAGE_KEY, JSON.stringify({
+        dayKey: currentRecordDayKey_(),
+        storedAtMs: Date.now(),
+        state: directSheetState_
+      }));
+    }catch(e){}
+  }
+
+  function directRestoreLocalState_(){
+    try{
+      const saved = JSON.parse(localStorage.getItem(DIRECT_STATE_STORAGE_KEY) || 'null');
+      if (!saved || saved.dayKey !== currentRecordDayKey_()) return false;
+      if (!saved.state || !Array.isArray(saved.state.blocks)) return false;
+      directSheetState_ = saved.state;
+      renderDirectSheet_();
+      directSetStatus_('최근 정상 시트 상태를 먼저 표시했습니다. 서버에서 최신 값을 확인 중이에요.');
+      return true;
+    }catch(e){
+      return false;
+    }
   }
 
   function renderDirectSheet_(){
@@ -3054,10 +3084,14 @@ window.guideSave = async function(){
         throw new Error((res && res.message) || '오늘 시트를 불러오지 못했습니다.');
       }
       directSheetState_ = res;
+      directPersistLocalState_();
       renderDirectSheet_();
       if (!opts.silent) directSetStatus_(`${res.sheetName} 시트와 동기화됐어요. 상단 닉네임과 같은 칸만 입력할 수 있습니다.`, 'ok');
     }catch(e){
-      if (!opts.silent) directSetStatus_(e && e.message ? e.message : '시트를 불러오지 못했습니다.', 'error');
+      if (!opts.silent) {
+        if (directSheetState_) directSetStatus_('최근 정상 시트 상태를 표시 중입니다. 서버의 최신 값 확인이 늦어지고 있어요.');
+        else directSetStatus_(e && e.message ? e.message : '시트를 불러오지 못했습니다.', 'error');
+      }
     }finally{
       directSheetLoading_ = false;
       if (refreshBtn) refreshBtn.disabled = false;
@@ -3121,6 +3155,7 @@ window.guideSave = async function(){
     directSelectedEmptyBlocks_.delete(Number(job.index));
     directSlotPickerOpen_ = false;
     setDirectPending_(job, false);
+    directPersistLocalState_();
   }
 
   function rollbackDirectOptimistic_(job){
@@ -4373,6 +4408,8 @@ window.guideSave = async function(){
   document.addEventListener('DOMContentLoaded', ()=>{
     const savedName = localStorage.getItem('VENT_NAME_V2');
     if (savedName && !$('user').value) $('user').value = savedName;
+    const savedSessionId = String(localStorage.getItem(SESSION_ID_STORAGE_KEY) || '').trim();
+    if (savedSessionId) sessionId = savedSessionId;
 
     $('user').addEventListener('input', async ()=>{
       localStorage.setItem('VENT_NAME_V2', myName());
@@ -4408,6 +4445,7 @@ window.guideSave = async function(){
     loadCustomSoundsFromBrowser_();
     const savedRecordMode = localStorage.getItem(RECORD_MODE_STORAGE_KEY) || 'chat';
     setRecordMode_(savedRecordMode, { skipLoad:true });
+    if (recordMode_ === 'sheet') directRestoreLocalState_();
 
     // 첫 제스처 확보
     window.addEventListener('pointerdown', markUserGesture, { once:true });
@@ -4418,6 +4456,7 @@ window.guideSave = async function(){
 
     // 2) 오늘 채팅은 날짜 방을 사용하므로 Apps Script 입장 응답과 독립적으로 먼저 엽니다.
     initFirebaseChat_(chatRoomIdForDay_(currentRecordDayKey_()));
+    if (sessionId) startPresence_().catch(()=>{});
     if (recordMode_ === 'sheet') loadDirectSheet_({ allowWithoutSession:true });
 
     // 3) 초기 ping (세션/기록 연결 확보)
