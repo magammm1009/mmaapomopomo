@@ -6,6 +6,6 @@
 window.POMO_APP_CONFIG = {
   APP_NAME: '마끝마 뽀모',
   APP_SHORT_NAME: '뽀모',
-  POMO_APP_URL: 'https://script.google.com/macros/s/AKfycbyxzmXPcR8P90djodR9GTTu940PQML-hmYkquDA3FXzgJ8xmLg7JTig-YSbPyIFOEcu/exec',
+  POMO_APP_URL: 'https://script.google.com/macros/s/AKfycbzWBWT8uJifOz6KUTM7O0ycgXP2vBxZltJcsorn1O6ikcw7eMhIN5XSdYc7UTod8Fid/exec',
   THEME_COLOR: '#ffd1e8'
 };
