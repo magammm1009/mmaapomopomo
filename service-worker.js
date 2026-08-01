@@ -1,7 +1,7 @@
 // 마끝마 뽀모 PWA Service Worker
-// v4.4.2 — 시트 단일 읽기·최근 상태 복원
+// v4.4.3 — 비차단 기록 알림창
 
-const CACHE_NAME = 'pomo-github-standalone-v4-4-2-20260801-sheet-read-recovery-v1';
+const CACHE_NAME = 'pomo-github-standalone-v4-4-3-20260801-record-toast-v1';
 const STATIC_ASSETS = [
   './offline.html',
   './manifest.webmanifest',
