@@ -1,5 +1,5 @@
 <!doctype html>
-<!-- POMO GitHub standalone v4.3 / 2026-08-01 / 다중 작업 칸 선택·1단위 조절 -->
+<!-- POMO GitHub standalone v4.4 / 2026-08-01 / 상시 세션·KST 자정 채팅 분리 -->
 <html>
 <head>
   <meta charset="utf-8"/>
@@ -10,11 +10,11 @@
   <link rel="manifest" href="./manifest.webmanifest" />
   <link rel="icon" href="./icons/icon-192.png" />
   <link rel="apple-touch-icon" href="./icons/icon-192.png" />
-  <script src="./config.js?v=20260801-direct-sheet-v4-3"></script>
+  <script src="./config.js?v=20260801-direct-sheet-v4-4"></script>
   <script>
   (function(){
     'use strict';
-    const VERSION = 'github-standalone-v4.3-multi-slot-controls-20260801';
+    const VERSION = 'github-standalone-v4.4-persistent-session-daily-chat-20260801';
     const cfg = window.POMO_APP_CONFIG || {};
     const endpoint = String(cfg.POMO_APP_URL || '').trim();
     const isMissing = !endpoint || endpoint.includes('여기에_Apps_Script') || endpoint.includes('YOUR_');
@@ -1137,7 +1137,7 @@
           </div>
 
           <div class="hint">
-          
+           
           </div>
         </div>
       </div>
@@ -1209,7 +1209,7 @@
 
 <script>
   // =====================
-  // v4.3: KST 자동 타이머 + 영속 기록 큐 + 다중 시트 칸 선택
+  // v4.4: 상시 세션 + KST 날짜별 채팅방 + 영속 기록 큐
   // - 닉네임이 설정된 앱 입장: 즉시 online 등록
   // - background: 접속 유지(heartbeat로 접속 여부를 판단하지 않음)
   // - 퇴장/창 종료/Firebase onDisconnect: 즉시 offline 정리
@@ -1254,6 +1254,7 @@
   // Firebase chat
   let fbRoomId = null;
   let fbStarted = false;
+  let fbChatUnsub_ = null;
 
   // Presence
   let presenceStarted = false;
@@ -1549,6 +1550,14 @@
   function fbMessagesPath_(roomId){
     return 'rooms/' + roomId + '/messages';
   }
+  function chatRoomIdForDay_(dayKey){
+    const safeDay = String(dayKey || '').match(/^\d{4}-\d{2}-\d{2}$/) ? String(dayKey) : computeAutoPomState_(Date.now()).dayKey;
+    // v4.3의 날짜형 세션 방과 같은 경로를 사용해 배포 당일 채팅도 끊기지 않게 합니다.
+    return safeDay;
+  }
+  function currentRecordDayKey_(){
+    return computeAutoPomState_(Date.now()).dayKey;
+  }
   function fbPresenceConnPath_(roomId){
     return 'rooms/' + roomId + '/presenceConn';
   }
@@ -1835,7 +1844,12 @@
   async function initFirebaseChat_(roomId){
     if (!roomId) return;
     const rid = String(roomId);
-    if (fbRoomId && fbRoomId !== rid) fbStarted = false;
+    if (fbRoomId && fbRoomId !== rid) {
+      try{ if (fbChatUnsub_) fbChatUnsub_(); }catch(e){}
+      fbChatUnsub_ = null;
+      fbStarted = false;
+      resetChatViewForNewDay_();
+    }
     fbRoomId = rid;
     if (fbStarted) return;
     fbStarted = true;
@@ -1847,7 +1861,7 @@
         window.FB.limitToLast(250)
       );
 
-      window.FB.onChildAdded(q, (snap) => {
+      fbChatUnsub_ = window.FB.onChildAdded(q, (snap) => {
         try{
           const v = snap.val() || {};
           if (v.type === 'pom-control') {
@@ -1864,6 +1878,7 @@
     }catch(e){
       console.warn('Firebase chat init failed', e);
       fbStarted = false;
+      fbChatUnsub_ = null;
     }
   }
 
@@ -1890,6 +1905,7 @@ function upgradeLegacyGuideText_(text){
     out = out.replace('✍기록 방법\n', '✍기록 방법\n• 💬 채팅 기록 / 📋 시트 직접 입력 탭 중 원하는 방식을 선택\n• 시트 직접 입력 모드에서는 채팅이 숨겨지고 오늘 뽀모 시트에 바로 반영\n');
   }
   if (!out.includes('다른 칸 추가 선택')) out = out.replace('• 시트 직접 입력 모드에서는 채팅이 숨겨지고 오늘 뽀모 시트에 바로 반영\n', '• 시트 직접 입력 모드에서는 내 칸만 표시되고 오늘 뽀모 시트에 바로 반영\n• 여러 작품은 “다른 칸 추가 선택”으로 같은 닉네임 칸을 늘리며 시트에서 합산\n');
+  if (!out.includes('자정에는 채팅창만')) out = out.replace('✍기록 방법\n', '✍기록 방법\n• 세션과 자동 타이머는 계속 유지되고, 한국시간 자정에는 채팅창만 새 날짜 방으로 전환\n');
   return out;
 }
 
@@ -2312,6 +2328,14 @@ window.guideSave = async function(){
   let unreadChatCount = 0;
   const CHAT_NEAR_BOTTOM_PX = 56;
 
+  function resetChatViewForNewDay_(){
+    seenIds.clear();
+    const log = $('log');
+    if (log) log.innerHTML = '';
+    unreadChatCount = 0;
+    updateNewMessagesButton_();
+  }
+
   function isChatNearBottom_(log){
     if (!log) return true;
     return (log.scrollHeight - log.scrollTop - log.clientHeight) <= CHAT_NEAR_BOTTOM_PX;
@@ -2483,6 +2507,7 @@ window.guideSave = async function(){
     try{
       const safe = cmdQueue_.map(job => ({
         sid:String(job.sid || ''), user:String(job.user || ''), msg:String(job.msg || ''),
+        dayKey:String(job.dayKey || ''),
         requestId:String(job.requestId || ''), messageKey:String(job.messageKey || ''),
         tries:Number(job.tries || 0), backoff:Number(job.backoff || 1200),
         notified:!!job.notified, createdAtMs:Number(job.createdAtMs || Date.now())
@@ -2497,11 +2522,14 @@ window.guideSave = async function(){
     try{
       const parsed = JSON.parse(localStorage.getItem(CMD_QUEUE_STORAGE_KEY) || '[]');
       const cutoff = Date.now() - 48 * 60 * 60 * 1000;
+      const currentDayKey = currentRecordDayKey_();
       for (const raw of (Array.isArray(parsed) ? parsed : [])){
         if (!raw || !raw.requestId || Number(raw.createdAtMs || 0) < cutoff) continue;
+        if (!raw.dayKey || String(raw.dayKey) !== currentDayKey) continue;
         if (cmdQueue_.some(j => j.requestId === raw.requestId)) continue;
         cmdQueue_.push({
           sid:String(raw.sid || ''), user:String(raw.user || '익명'), msg:String(raw.msg || ''),
+          dayKey:String(raw.dayKey || ''),
           requestId:String(raw.requestId), messageKey:String(raw.messageKey || ''),
           tries:Number(raw.tries || 0), notified:!!raw.notified,
           backoff:Math.max(1200, Number(raw.backoff || 1200)),
@@ -2519,13 +2547,13 @@ window.guideSave = async function(){
     persistCommandQueue_();
   }
 
-  function runProcessCommandOnly_(sid, user, msg, requestId){
-    return gasCallPromise_('processCommandOnly', [sid, user, msg, requestId], 35000);
+  function runProcessCommandOnly_(sid, user, msg, requestId, dayKey){
+    return gasCallPromise_('processCommandOnly', [sid, user, msg, requestId, dayKey], 35000);
   }
 
-  function enqueueCommand_(sid, user, msg, requestId, messageKey){
+  function enqueueCommand_(sid, user, msg, requestId, messageKey, dayKey){
     if (!requestId || cmdQueue_.some(j => j.requestId === requestId)) return;
-    cmdQueue_.push({ sid, user, msg, requestId, messageKey, tries: 0, notified: false, backoff: 1200, createdAtMs: Date.now() });
+    cmdQueue_.push({ sid, user, msg, requestId, messageKey, dayKey:String(dayKey || currentRecordDayKey_()), tries: 0, notified: false, backoff: 1200, createdAtMs: Date.now() });
     persistCommandQueue_();
     setRecordQueueStatus_('시트 기록을 반영하는 중…');
     if (!cmdWorking_) processCmdQueue_();
@@ -2539,8 +2567,13 @@ window.guideSave = async function(){
       const job = cmdQueue_[0];
       if (!job.sid) { finishCommandJob_(); continue; }
 
+      if (!job.dayKey || job.dayKey !== currentRecordDayKey_()) {
+        setRecordQueueStatus_('날짜가 바뀌어 이전 날짜의 미처리 기록은 오늘 데이터에 반영하지 않았어요.', 'error', 4500);
+        finishCommandJob_();
+        continue;
+      }
       if (sessionId && job.sid !== sessionId) {
-        try{ await fbSend_('SYSTEM', '⚠️ 날짜가 바뀌어 이전 날짜의 미처리 기록을 자동 반영하지 않았어요. 해당 값만 다시 입력해 주세요.', 'system', `${job.messageKey}_result`); }catch(e){}
+        setRecordQueueStatus_('앱 연결 정보가 바뀌어 미처리 기록을 반영하지 않았어요. 해당 값만 다시 입력해 주세요.', 'error', 4500);
         finishCommandJob_();
         continue;
       }
@@ -2549,13 +2582,18 @@ window.guideSave = async function(){
         let res;
         await acquireRecordRpc_('chat');
         try{
-          res = await runProcessCommandOnly_(job.sid, job.user, job.msg, job.requestId);
+          res = await runProcessCommandOnly_(job.sid, job.user, job.msg, job.requestId, job.dayKey);
         }finally{
           releaseRecordRpc_('chat');
         }
 
         if (res && res.ok === false && res.reason === 'SESSION_CHANGED') {
           try{ await fbSend_('SYSTEM', '⚠️ 세션이 바뀌어 이 기록은 자동 반영하지 않았어요. 해당 값만 다시 입력해 주세요.', 'system', `${job.messageKey}_result`); }catch(e){}
+          finishCommandJob_();
+          continue;
+        }
+        if (res && res.ok === false && res.reason === 'DAY_CHANGED') {
+          setRecordQueueStatus_('자정이 지나 이전 날짜 기록은 오늘 데이터에 반영하지 않았어요. 해당 값만 다시 입력해 주세요.', 'error', 4500);
           finishCommandJob_();
           continue;
         }
@@ -2570,6 +2608,12 @@ window.guideSave = async function(){
           persistCommandQueue_();
           const jitter = Math.floor(Math.random() * 300);
           await new Promise(r => setTimeout(r, job.backoff + jitter));
+          continue;
+        }
+
+        if (job.dayKey !== currentRecordDayKey_()) {
+          finishCommandJob_();
+          setRecordQueueStatus_('자정이 지나 이전 날짜 기록 결과는 새 채팅방에 표시하지 않았어요.', 'ok', 3500);
           continue;
         }
 
@@ -2644,6 +2688,11 @@ window.guideSave = async function(){
 
     if (lastAutoDayKey && state.dayKey !== lastAutoDayKey && midnightRefreshDay !== state.dayKey) {
       midnightRefreshDay = state.dayKey;
+      directSelectedEmptyBlocks_.clear();
+      directSlotPickerOpen_ = false;
+      directSheetState_ = null;
+      renderDirectSheet_();
+      if (sessionId) initFirebaseChat_(chatRoomIdForDay_(state.dayKey));
       pingBackoff = 0;
       joinOrPing_();
     }
@@ -2727,7 +2776,7 @@ window.guideSave = async function(){
       if (res.pom) onPomState({ ok:true, ...res.pom }, { silent:true });
 
       if (sessionId){
-        initFirebaseChat_(sessionId);
+        initFirebaseChat_(chatRoomIdForDay_(currentRecordDayKey_()));
         await startPresence_();
         initNotice_(sessionId);
         initGuide_(sessionId);
@@ -2782,8 +2831,10 @@ window.guideSave = async function(){
     (async () => {
       try{
         const isCmd = isCommandMsg_(msg);
+        const dayKey = currentRecordDayKey_();
+        await initFirebaseChat_(chatRoomIdForDay_(dayKey));
         const messageKey = await fbSend_(user, msg, isCmd ? 'cmd' : 'chat');
-        if (isCmd) enqueueCommand_(sessionId, user, msg, `${sessionId}|${messageKey}`, messageKey);
+        if (isCmd) enqueueCommand_(sessionId, user, msg, `${dayKey}|${messageKey}`, messageKey, dayKey);
       } catch(e) {
         alert('전송 실패! 네트워크/권한을 확인해주세요.');
       } finally {
@@ -2805,12 +2856,13 @@ window.guideSave = async function(){
   }
 
   function directRequestId_(){
+    const dayKey = currentRecordDayKey_();
     try{
       if (window.crypto && typeof window.crypto.randomUUID === 'function') {
-        return `direct|${sessionId || 'none'}|${window.crypto.randomUUID()}`;
+        return `direct|${dayKey}|${window.crypto.randomUUID()}`;
       }
     }catch(e){}
-    return `direct|${sessionId || 'none'}|${CLIENT_ID}|${Date.now()}|${Math.random().toString(36).slice(2)}`;
+    return `direct|${dayKey}|${CLIENT_ID}|${Date.now()}|${Math.random().toString(36).slice(2)}`;
   }
 
   function setRecordMode_(mode, options){
@@ -2840,6 +2892,7 @@ window.guideSave = async function(){
     if (!state || !Array.isArray(state.blocks)) {
       root.innerHTML = '';
       if (summary) summary.textContent = '닉네임을 입력하면 사용할 수 있는 칸을 안내합니다.';
+      if (addBtn) { addBtn.disabled = true; addBtn.textContent = '＋ 다른 칸 추가 선택'; }
       return;
     }
 
@@ -3005,8 +3058,10 @@ window.guideSave = async function(){
     try{
       const parsed = JSON.parse(localStorage.getItem(DIRECT_QUEUE_STORAGE_KEY) || '[]');
       const cutoff = Date.now() - 48 * 60 * 60 * 1000;
+      const currentDayKey = currentRecordDayKey_();
       for (const raw of (Array.isArray(parsed) ? parsed : [])) {
         if (!raw || !raw.requestId || Number(raw.createdAtMs || 0) < cutoff) continue;
+        if (!raw.dayKey || String(raw.dayKey) !== currentDayKey) continue;
         if (!directQueue_.some(j => j.requestId === raw.requestId)) directQueue_.push(raw);
       }
       persistDirectQueue_();
@@ -3076,6 +3131,12 @@ window.guideSave = async function(){
         const job = directQueue_[0];
         if (!job || !job.requestId) { finishDirectJob_(); continue; }
         setDirectPending_(job, true);
+        if (!job.dayKey || job.dayKey !== currentRecordDayKey_()) {
+          directSetStatus_('날짜가 바뀌어 이전 날짜의 미처리 시트 입력은 오늘 시트에 반영하지 않았어요.', 'error');
+          rollbackDirectOptimistic_(job);
+          finishDirectJob_();
+          continue;
+        }
         if (sessionId && job.sid !== sessionId) {
           directSetStatus_('날짜가 바뀌어 이전 날짜의 미처리 시트 입력은 자동 반영하지 않았어요. 값을 다시 확인해 주세요.', 'error');
           rollbackDirectOptimistic_(job);
@@ -3086,7 +3147,7 @@ window.guideSave = async function(){
           let res;
           await acquireRecordRpc_('direct');
           try{
-            res = await gasCallPromise_('saveDirectSheetEntry', [job.sid, job.name, job.index, job.kind, job.value, job.requestId], 35000);
+            res = await gasCallPromise_('saveDirectSheetEntry', [job.sid, job.name, job.index, job.kind, job.value, job.requestId, job.dayKey], 35000);
           }finally{
             releaseRecordRpc_('direct');
           }
@@ -3100,11 +3161,24 @@ window.guideSave = async function(){
               joinOrPing_();
               continue;
             }
+            if (res && res.reason === 'DAY_CHANGED') {
+              rollbackDirectOptimistic_(job);
+              finishDirectJob_();
+              directSetStatus_('자정이 지나 이전 날짜 입력은 오늘 시트에 반영하지 않았어요. 값을 다시 확인해 주세요.', 'error');
+              continue;
+            }
             const msg = (res && res.message) || '시트 입력을 반영하지 못했습니다.';
             rollbackDirectOptimistic_(job);
             finishDirectJob_();
             directSetStatus_(msg, 'error');
             if (res && res.reason === 'NAME_MISMATCH') setTimeout(()=>loadDirectSheet_({ silent:true }), 0);
+            continue;
+          }
+          if (job.dayKey !== currentRecordDayKey_()) {
+            rollbackDirectOptimistic_(job);
+            finishDirectJob_();
+            directSetStatus_('자정이 지나 오늘 시트를 새로 불러옵니다.', 'ok');
+            setTimeout(()=>loadDirectSheet_({ silent:true }), 0);
             continue;
           }
           applyDirectResult_(job, res);
@@ -3146,6 +3220,7 @@ window.guideSave = async function(){
       index,
       kind,
       value:Number(raw),
+      dayKey:currentRecordDayKey_(),
       previousBlock:previousBlock ? { ...previousBlock } : null,
       requestId:directRequestId_()
     };

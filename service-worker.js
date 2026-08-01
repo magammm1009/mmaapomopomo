@@ -1,7 +1,7 @@
 // 마끝마 뽀모 PWA Service Worker
-// v4.3 — 다중 작업 칸 선택·1단위 조절
+// v4.4 — 상시 세션·KST 자정 채팅 분리
 
-const CACHE_NAME = 'pomo-github-standalone-v4-3-20260801-multi-slot-controls-v1';
+const CACHE_NAME = 'pomo-github-standalone-v4-4-20260801-persistent-session-daily-chat-v1';
 const STATIC_ASSETS = [
   './offline.html',
   './manifest.webmanifest',
