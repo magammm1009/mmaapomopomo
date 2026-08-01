@@ -1,5 +1,5 @@
 <!doctype html>
-<!-- POMO GitHub standalone v4.4.3 / 2026-08-01 / 비차단 기록 알림창 -->
+<!-- POMO GitHub standalone v4.4.6 / 2026-08-01 / 조용한 재시도·즉시 로컬 결과 -->
 <html>
 <head>
   <meta charset="utf-8"/>
@@ -10,11 +10,11 @@
   <link rel="manifest" href="./manifest.webmanifest" />
   <link rel="icon" href="./icons/icon-192.png" />
   <link rel="apple-touch-icon" href="./icons/icon-192.png" />
-  <script src="./config.js?v=20260801-record-toast-v4-4-3"></script>
+  <script src="./config.js?v=20260801-quiet-fast-record-v4-4-6"></script>
   <script>
   (function(){
     'use strict';
-    const VERSION = 'github-standalone-v4.4.3-record-toast-20260801';
+    const VERSION = 'github-standalone-v4.4.6-quiet-fast-record-20260801';
     const cfg = window.POMO_APP_CONFIG || {};
     const endpoint = String(cfg.POMO_APP_URL || '').trim();
     const isMissing = !endpoint || endpoint.includes('여기에_Apps_Script') || endpoint.includes('YOUR_');
@@ -1168,7 +1168,7 @@
           </div>
 
           <div class="hint">
-            
+            스냅샷(현재 글자수)은 직전 스냅샷과의 차이만 누적돼요. <br/>🚩시작(기준)=오늘 기준 스냅샷 저장 · 🧹초기화=오늘 누적 0 · 🆕새편=새 회차를 0자부터
           </div>
         </div>
       </div>
@@ -1209,7 +1209,7 @@
   import { getAuth, signInAnonymously, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.0.1/firebase-auth.js";
   import {
     getDatabase, ref, push, set, update, remove, get,
-    query, limitToLast, onChildAdded, onValue, off, onDisconnect
+    query, limitToLast, onChildAdded, onChildChanged, onValue, off, onDisconnect
   } from "https://www.gstatic.com/firebasejs/11.0.1/firebase-database.js";
 
   const firebaseConfig = {
@@ -1234,7 +1234,7 @@
   // module 밖에서 쓰기 위해 window로 노출
   window.FB = {
     app, auth, db, ensureAnonAuth, onAuthStateChanged,
-    ref, push, set, update, remove, get, query, limitToLast, onChildAdded, onValue, off, onDisconnect
+    ref, push, set, update, remove, get, query, limitToLast, onChildAdded, onChildChanged, onValue, off, onDisconnect
   };
 </script>
 
@@ -1288,6 +1288,7 @@
   let fbRoomId = null;
   let fbStarted = false;
   let fbChatUnsub_ = null;
+  let fbChatChangeUnsub_ = null;
 
   // Presence
   let presenceStarted = false;
@@ -1879,7 +1880,9 @@
     const rid = String(roomId);
     if (fbRoomId && fbRoomId !== rid) {
       try{ if (fbChatUnsub_) fbChatUnsub_(); }catch(e){}
+      try{ if (fbChatChangeUnsub_) fbChatChangeUnsub_(); }catch(e){}
       fbChatUnsub_ = null;
+      fbChatChangeUnsub_ = null;
       fbStarted = false;
       resetChatViewForNewDay_();
     }
@@ -1907,11 +1910,24 @@
           appendChatRows([[ts, name, text, snap.key || String(v.ts || Date.now())]]);
         }catch(e){}
       });
+      fbChatChangeUnsub_ = window.FB.onChildChanged(q, (snap) => {
+        try{
+          const v = snap.val() || {};
+          if (v.type === 'pom-control') return;
+          replaceChatRow_(
+            fmtTsFromMs_(v.ts || Date.now()),
+            v.name || '익명',
+            v.text || '',
+            snap.key || String(v.ts || Date.now())
+          );
+        }catch(e){}
+      });
 
     }catch(e){
       console.warn('Firebase chat init failed', e);
       fbStarted = false;
       fbChatUnsub_ = null;
+      fbChatChangeUnsub_ = null;
     }
   }
 
@@ -2423,6 +2439,33 @@ window.guideSave = async function(){
     updateNewMessagesButton_();
   }
 
+  function fillChatRow_(row, ts, user, msg, id){
+    const me = myName();
+    const isSys = (user === 'SYSTEM');
+    const isMine = (!isSys && me && user === me);
+    row.className = `row ${isSys ? 'system' : (isMine ? 'mine' : 'theirs')}`;
+    if (id) row.dataset.chatId = String(id);
+    row.innerHTML = `
+      <div class="metaLine">${escapeHtml(ts)} · ${escapeHtml(isSys ? '시스템' : user)}</div>
+      <div class="bubble">${escapeHtml(msg)}</div>
+    `;
+  }
+
+  function replaceChatRow_(ts, user, msg, idRaw){
+    const log = $('log');
+    const id = String(idRaw || '');
+    if (!log || !id) return false;
+    const rows = log.querySelectorAll('.row[data-chat-id]');
+    for (const row of rows) {
+      if (String(row.dataset.chatId || '') !== id) continue;
+      const shouldFollowLatest = isChatNearBottom_(log);
+      fillChatRow_(row, ts, user, msg, id);
+      if (shouldFollowLatest) scrollChatToLatest_();
+      return true;
+    }
+    return appendChatRows([[ts, user, msg, id]]);
+  }
+
   function appendChatRows(rows){
     const log = $('log');
     const me = myName();
@@ -2438,15 +2481,8 @@ window.guideSave = async function(){
       if (id && seenIds.has(id)) return;
       if (id) seenIds.add(id);
 
-      const isSys = (user === 'SYSTEM');
-      const isMine = (!isSys && me && user === me);
-
       const row = document.createElement('div');
-      row.className = `row ${isSys ? 'system' : (isMine ? 'mine' : 'theirs')}`;
-      row.innerHTML = `
-        <div class="metaLine">${escapeHtml(ts)} · ${escapeHtml(isSys ? '시스템' : user)}</div>
-        <div class="bubble">${escapeHtml(msg)}</div>
-      `;
+      fillChatRow_(row, ts, user, msg, id);
       log.appendChild(row);
       appended = true;
       addedCount += 1;
@@ -2510,18 +2546,11 @@ window.guideSave = async function(){
   function setRecordQueueStatus_(text, kind, autoHideMs){
     const el = $('recordQueueStatus');
     if (!el) return;
-    const msg = String(text || '');
-    el.textContent = msg;
-    el.classList.toggle('isHidden', !msg);
-    el.classList.toggle('isOk', kind === 'ok');
-    el.classList.toggle('isError', kind === 'error');
-    const stamp = Date.now();
-    el.dataset.stamp = String(stamp);
-    if (msg && autoHideMs) {
-      setTimeout(()=>{
-        if (el.dataset.stamp === String(stamp)) setRecordQueueStatus_('');
-      }, autoHideMs);
-    }
+    // 기록 중/재시도 상태는 작업 흐름을 방해하지 않도록 화면에 띄우지 않습니다.
+    // 실제 실패는 Firebase 시스템 메시지로 채팅에 남습니다.
+    el.textContent = '';
+    el.classList.add('isHidden');
+    el.classList.remove('isOk', 'isError');
   }
 
   async function acquireRecordRpc_(owner){
@@ -2581,15 +2610,22 @@ window.guideSave = async function(){
   }
 
   function runProcessCommandOnly_(sid, user, msg, requestId, dayKey){
-    return gasCallPromise_('processCommandOnly', [sid, user, msg, requestId, dayKey], 35000);
+    return gasCallPromise_('processCommandOnly', [sid, user, msg, requestId, dayKey], 90000);
   }
 
   function enqueueCommand_(sid, user, msg, requestId, messageKey, dayKey){
     if (!requestId || cmdQueue_.some(j => j.requestId === requestId)) return;
     cmdQueue_.push({ sid, user, msg, requestId, messageKey, dayKey:String(dayKey || currentRecordDayKey_()), tries: 0, notified: false, backoff: 1200, createdAtMs: Date.now() });
     persistCommandQueue_();
-    setRecordQueueStatus_('시트 기록을 반영하는 중…');
     if (!cmdWorking_) processCmdQueue_();
+  }
+
+  async function publishRecordResult_(job, text, ts){
+    const key = `${job.messageKey}_result`;
+    const stamp = ts || fmtTsFromMs_(Date.now());
+    // 요청한 사람에게는 Apps Script 응답 즉시 표시하고, Firebase에는 공용 결과로 동기화합니다.
+    replaceChatRow_(stamp, 'SYSTEM', text, key);
+    await fbSend_('SYSTEM', text, 'system', key);
   }
 
   async function processCmdQueue_(){
@@ -2601,11 +2637,13 @@ window.guideSave = async function(){
       if (!job.sid) { finishCommandJob_(); continue; }
 
       if (!job.dayKey || job.dayKey !== currentRecordDayKey_()) {
+        try{ await fbSend_('SYSTEM', '⚠️ 날짜가 바뀌어 이전 날짜의 미처리 기록은 반영하지 않았어요.', 'system', `${job.messageKey}_result`); }catch(e){}
         setRecordQueueStatus_('날짜가 바뀌어 이전 날짜의 미처리 기록은 오늘 데이터에 반영하지 않았어요.', 'error', 4500);
         finishCommandJob_();
         continue;
       }
       if (sessionId && job.sid !== sessionId) {
+        try{ await fbSend_('SYSTEM', '⚠️ 앱 연결 정보가 바뀌어 이 기록은 반영하지 않았어요. 해당 값만 다시 입력해 주세요.', 'system', `${job.messageKey}_result`); }catch(e){}
         setRecordQueueStatus_('앱 연결 정보가 바뀌어 미처리 기록을 반영하지 않았어요. 해당 값만 다시 입력해 주세요.', 'error', 4500);
         finishCommandJob_();
         continue;
@@ -2626,6 +2664,7 @@ window.guideSave = async function(){
           continue;
         }
         if (res && res.ok === false && res.reason === 'DAY_CHANGED') {
+          try{ await fbSend_('SYSTEM', '⚠️ 자정이 지나 이전 날짜 기록은 오늘 데이터에 반영하지 않았어요.', 'system', `${job.messageKey}_result`); }catch(e){}
           setRecordQueueStatus_('자정이 지나 이전 날짜 기록은 오늘 데이터에 반영하지 않았어요. 해당 값만 다시 입력해 주세요.', 'error', 4500);
           finishCommandJob_();
           continue;
@@ -2645,13 +2684,16 @@ window.guideSave = async function(){
         }
 
         if (job.dayKey !== currentRecordDayKey_()) {
+          try{ await fbSend_('SYSTEM', '⚠️ 자정이 지나 이전 날짜 기록 결과는 오늘 채팅방에 반영하지 않았어요.', 'system', `${job.messageKey}_result`); }catch(e){}
           finishCommandJob_();
           setRecordQueueStatus_('자정이 지나 이전 날짜 기록 결과는 새 채팅방에 표시하지 않았어요.', 'ok', 3500);
           continue;
         }
 
         if (res && res.hadCommand && res.sysText) {
-          try{ await fbSend_('SYSTEM', res.sysText, 'system', `${job.messageKey}_result`); }catch(e){}
+          await publishRecordResult_(job, res.sysText, res.ts);
+        } else {
+          await publishRecordResult_(job, '⚠️ 기록 명령을 확인하지 못했어요. 입력값을 다시 확인해 주세요.');
         }
 
         finishCommandJob_();

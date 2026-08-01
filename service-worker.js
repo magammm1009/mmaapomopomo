@@ -1,7 +1,7 @@
 // 마끝마 뽀모 PWA Service Worker
-// v4.4.3 — 비차단 기록 알림창
+// v4.4.6 — 조용한 재시도·즉시 로컬 결과
 
-const CACHE_NAME = 'pomo-github-standalone-v4-4-3-20260801-record-toast-v1';
+const CACHE_NAME = 'pomo-github-standalone-v4-4-6-20260801-quiet-fast-record-v1';
 const STATIC_ASSETS = [
   './offline.html',
   './manifest.webmanifest',
