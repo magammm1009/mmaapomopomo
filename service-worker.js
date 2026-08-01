@@ -1,7 +1,7 @@
 // 마끝마 뽀모 PWA Service Worker
-// v4.2 — 직접 입력 속도·닉네임 위치·화면 높이 개선
+// v4.3 — 다중 작업 칸 선택·1단위 조절
 
-const CACHE_NAME = 'pomo-github-standalone-v4-2-20260801-direct-sheet-fast-v1';
+const CACHE_NAME = 'pomo-github-standalone-v4-3-20260801-multi-slot-controls-v1';
 const STATIC_ASSETS = [
   './offline.html',
   './manifest.webmanifest',

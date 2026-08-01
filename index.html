@@ -1,5 +1,5 @@
 <!doctype html>
-<!-- POMO GitHub standalone v4.2 / 2026-08-01 / 직접 입력 속도·닉네임 위치·화면 높이 개선 -->
+<!-- POMO GitHub standalone v4.3 / 2026-08-01 / 다중 작업 칸 선택·1단위 조절 -->
 <html>
 <head>
   <meta charset="utf-8"/>
@@ -10,11 +10,11 @@
   <link rel="manifest" href="./manifest.webmanifest" />
   <link rel="icon" href="./icons/icon-192.png" />
   <link rel="apple-touch-icon" href="./icons/icon-192.png" />
-  <script src="./config.js?v=20260801-direct-sheet-v4-2"></script>
+  <script src="./config.js?v=20260801-direct-sheet-v4-3"></script>
   <script>
   (function(){
     'use strict';
-    const VERSION = 'github-standalone-v4.2-direct-sheet-fast-20260801';
+    const VERSION = 'github-standalone-v4.3-multi-slot-controls-20260801';
     const cfg = window.POMO_APP_CONFIG || {};
     const endpoint = String(cfg.POMO_APP_URL || '').trim();
     const isMissing = !endpoint || endpoint.includes('여기에_Apps_Script') || endpoint.includes('YOUR_');
@@ -600,6 +600,8 @@
   gap:10px;
   margin-bottom:8px;
 }
+.sheetDirectActions{ display:flex; align-items:center; justify-content:flex-end; gap:6px; flex-wrap:wrap; }
+.sheetDirectActions .btnGhost{ padding:8px 9px; font-size:11px; }
 .sheetDirectTitle{ font-weight:950; font-size:14px; }
 .sheetDirectSub{ color:var(--muted); font-size:11px; line-height:1.45; margin-top:2px; }
 .sheetDirectStatus{
@@ -614,6 +616,7 @@
 }
 .sheetDirectStatus.isOk{ background:#eefbf7; border-color:#c9eee3; }
 .sheetDirectStatus.isError{ background:#fff0f3; border-color:#f5cbd6; }
+.sheetDirectSummary{ margin:-1px 0 9px; padding:7px 9px; border-radius:11px; background:#f2fbf8; border:1px solid #d2eee6; color:#286758; font-size:11px; font-weight:850; }
 .sheetBlockList{
   display:grid;
   grid-template-columns:repeat(2,minmax(0,1fr));
@@ -633,6 +636,9 @@
 .sheetBlock.isLocked{ opacity:.62; background:#fafafa; }
 .sheetBlock.isPending{ border-color:#f2c45f; box-shadow:0 0 0 2px rgba(242,196,95,.18); }
 .sheetBlock.isPending .sheetEntryLine button{ opacity:.62; cursor:wait; }
+.sheetBlock.isChoice{ border-style:dashed; background:#fffafd; }
+.sheetChooseBtn{ width:100%; min-width:0; padding:8px 7px; border-radius:10px; background:#ffe0ef; color:#6f2048; font-size:11px; }
+.sheetEmptyState{ grid-column:1/-1; padding:18px 12px; border:1px dashed var(--line); border-radius:14px; text-align:center; color:var(--muted); font-size:12px; font-weight:800; }
 .sheetBlockTop{ display:flex; justify-content:space-between; align-items:flex-start; gap:8px; }
 .sheetBlockName{ font-size:13px; font-weight:950; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
 .sheetBlockTotal{ font-size:12px; font-weight:950; color:#16715c; white-space:nowrap; }
@@ -1075,7 +1081,8 @@
               <div class="stepperReadout" id="soundVolVal" aria-live="polite">150%</div>
               <button class="stepperBtn" id="soundVolUp" type="button" aria-label="볼륨 높이기">＋</button>
             </div>
-            <div class="stepperHint">한 번에 1% · 길게 누르면 연속 조절</div>
+            <input class="menuSliderRange" id="soundVol" type="range" min="50" max="800" step="1" value="150" aria-label="알림음 볼륨 슬라이더" />
+            <div class="stepperHint">모든 조절 방식이 1% 단위 · 숫자 위 마우스 휠 가능</div>
           </div>
 
           <div class="menuSliderBlock">
@@ -1130,6 +1137,7 @@
           </div>
 
           <div class="hint">
+          
           </div>
         </div>
       </div>
@@ -1138,13 +1146,17 @@
         <div class="sheetDirectHead">
           <div>
             <div class="sheetDirectTitle">오늘 뽀모 시트 직접 입력</div>
-            <div class="sheetDirectSub">채팅은 보이지 않으며, 상단 닉네임과 같은 칸만 안전하게 입력할 수 있어요.</div>
+            <div class="sheetDirectSub">내 칸만 표시됩니다. 같은 닉네임으로 여러 칸을 사용하면 기존 시트에서 합산돼요.</div>
           </div>
-          <button class="btnGhost" id="btnDirectRefresh" type="button">↻ 새로고침</button>
+          <div class="sheetDirectActions">
+            <button class="btnGhost" id="btnDirectAddSlot" type="button">＋ 다른 칸 추가 선택</button>
+            <button class="btnGhost" id="btnDirectRefresh" type="button">↻ 새로고침</button>
+          </div>
         </div>
         <div class="sheetDirectStatus" id="sheetDirectStatus">시트 입력 모드를 열면 오늘 시트를 불러옵니다.</div>
+        <div class="sheetDirectSummary" id="sheetDirectSummary">닉네임을 입력하면 사용할 수 있는 칸을 안내합니다.</div>
         <div class="sheetBlockList" id="sheetBlockList"></div>
-        <div class="sheetEntryHint">빈 칸에 처음 저장하면 상단 닉네임으로 등록됩니다. 기존 다른 닉네임 칸은 앱에서 수정할 수 없습니다.</div>
+        <div class="sheetEntryHint">빈 칸을 선택한 뒤 처음 저장하면 닉네임이 등록됩니다. 다른 사용자의 칸은 숨겨지며 수정할 수 없습니다.</div>
       </div>
     </div>
   </div>
@@ -1197,7 +1209,7 @@
 
 <script>
   // =====================
-  // v4.1: KST 자동 타이머 + 영속 기록 큐 + 채팅/시트 직접 입력 전환
+  // v4.3: KST 자동 타이머 + 영속 기록 큐 + 다중 시트 칸 선택
   // - 닉네임이 설정된 앱 입장: 즉시 online 등록
   // - background: 접속 유지(heartbeat로 접속 여부를 판단하지 않음)
   // - 퇴장/창 종료/Firebase onDisconnect: 즉시 offline 정리
@@ -1263,6 +1275,9 @@
   let directSheetLoading_ = false;
   let directSheetState_ = null;
   const directPendingBlocks_ = Object.create(null);
+  const directSelectedEmptyBlocks_ = new Set();
+  let directSlotPickerOpen_ = false;
+  let directSelectionViewer_ = '';
   const directQueue_ = [];
   let directQueueWorking_ = false;
   let directQueueRestored_ = false;
@@ -1874,6 +1889,7 @@ function upgradeLegacyGuideText_(text){
   if (!out.includes('📋 시트 직접 입력')) {
     out = out.replace('✍기록 방법\n', '✍기록 방법\n• 💬 채팅 기록 / 📋 시트 직접 입력 탭 중 원하는 방식을 선택\n• 시트 직접 입력 모드에서는 채팅이 숨겨지고 오늘 뽀모 시트에 바로 반영\n');
   }
+  if (!out.includes('다른 칸 추가 선택')) out = out.replace('• 시트 직접 입력 모드에서는 채팅이 숨겨지고 오늘 뽀모 시트에 바로 반영\n', '• 시트 직접 입력 모드에서는 내 칸만 표시되고 오늘 뽀모 시트에 바로 반영\n• 여러 작품은 “다른 칸 추가 선택”으로 같은 닉네임 칸을 늘리며 시트에서 합산\n');
   return out;
 }
 
@@ -2817,32 +2833,90 @@ window.guideSave = async function(){
 
   function renderDirectSheet_(){
     const root = $('sheetBlockList');
+    const summary = $('sheetDirectSummary');
+    const addBtn = $('btnDirectAddSlot');
     if (!root) return;
     const state = directSheetState_;
     if (!state || !Array.isArray(state.blocks)) {
       root.innerHTML = '';
+      if (summary) summary.textContent = '닉네임을 입력하면 사용할 수 있는 칸을 안내합니다.';
       return;
     }
 
     const viewer = directNormalizeName_(myName());
-    root.innerHTML = state.blocks.map((block)=>{
+    if (viewer !== directSelectionViewer_) {
+      directSelectionViewer_ = viewer;
+      directSelectedEmptyBlocks_.clear();
+      directSlotPickerOpen_ = false;
+    }
+
+    const blockByIndex = new Map(state.blocks.map((block)=>[Number(block.index), block]));
+    for (const index of Array.from(directSelectedEmptyBlocks_)) {
+      const block = blockByIndex.get(Number(index));
+      const blockName = directNormalizeName_(block && block.name);
+      const pending = directPendingBlocks_[String(index)] || null;
+      if (!block || (blockName && blockName !== viewer) || (blockName === viewer && !pending)) directSelectedEmptyBlocks_.delete(index);
+    }
+
+    const mineBlocks = state.blocks.filter((block)=>viewer && directNormalizeName_(block.name) === viewer);
+    const emptyBlocks = state.blocks.filter((block)=>!directNormalizeName_(block.name));
+    const forcedFirstChoice = !!viewer && mineBlocks.length === 0 && directSelectedEmptyBlocks_.size === 0;
+    const showChoices = forcedFirstChoice || directSlotPickerOpen_;
+    const combinedTotal = mineBlocks.reduce((sum, block)=>sum + Number(block.total || 0), 0);
+
+    if (summary) {
+      summary.textContent = !viewer
+        ? '상단 닉네임을 먼저 입력해 주세요.'
+        : mineBlocks.length
+          ? `내 작업 칸 ${mineBlocks.length}개 · 합산 누적 ${combinedTotal.toLocaleString('ko-KR')}자${directSelectedEmptyBlocks_.size ? ` · 새 칸 ${directSelectedEmptyBlocks_.size}개 선택 중` : ''}`
+          : directSelectedEmptyBlocks_.size
+            ? `새 작업 칸 ${directSelectedEmptyBlocks_.size}개 선택 중 · 기준값을 저장하면 닉네임이 등록됩니다.`
+            : '사용할 빈 칸을 하나 골라 주세요.';
+    }
+    if (addBtn) {
+      addBtn.disabled = !viewer || emptyBlocks.length === 0 || forcedFirstChoice;
+      addBtn.textContent = !viewer
+        ? '＋ 닉네임 필요'
+        : emptyBlocks.length === 0
+          ? '사용 가능한 빈 칸 없음'
+          : forcedFirstChoice
+            ? '사용할 칸 선택 중'
+            : directSlotPickerOpen_ ? '✕ 추가 선택 닫기' : '＋ 다른 칸 추가 선택';
+    }
+
+    const visibleBlocks = state.blocks.filter((block)=>{
+      const blockName = directNormalizeName_(block.name);
+      if (viewer && blockName === viewer) return true;
+      if (blockName) return false;
+      const selected = directSelectedEmptyBlocks_.has(Number(block.index));
+      return selected || showChoices;
+    });
+
+    root.innerHTML = visibleBlocks.map((block)=>{
       const blockName = directNormalizeName_(block.name);
       const mine = !!viewer && !!blockName && blockName === viewer;
-      const locked = !!blockName && !mine;
+      const selected = !blockName && directSelectedEmptyBlocks_.has(Number(block.index));
+      const choice = !blockName && !selected;
       const pending = directPendingBlocks_[String(block.index)] || null;
-      const canEdit = !!viewer && !locked && !pending;
-      const cardClass = [locked ? 'isLocked' : (mine ? 'isMine' : ''), pending ? 'isPending' : ''].filter(Boolean).join(' ');
-      const displayName = blockName || (viewer ? `빈 칸 · ${viewer}로 등록 가능` : '빈 칸 · 닉네임 필요');
+      const canEdit = !!viewer && (mine || selected) && !pending;
+      const cardClass = [mine || selected ? 'isMine' : '', choice ? 'isChoice' : '', pending ? 'isPending' : ''].filter(Boolean).join(' ');
+      const displayName = blockName || (selected ? `선택한 칸 · ${viewer} 등록 예정` : '사용 가능한 빈 칸');
       const baseValue = block.base == null ? '' : String(block.base);
       const currentValue = pending && pending.kind === 'current' ? String(pending.value) : '';
       const pendingLabel = pending ? ` · ${pending.kind === 'base' ? '기준' : '현재'} ${Number(pending.value).toLocaleString('ko-KR')}자 반영 중` : '';
+      if (choice) return `
+        <div class="sheetBlock isChoice" data-block-index="${Number(block.index)}">
+          <div class="sheetBlockTop"><div class="sheetBlockName">사용 가능한 빈 칸</div><div class="sheetBlockTotal">누적 0자</div></div>
+          <div class="sheetBlockMeta">${escapeHtml(state.sheetName || '')} · ${escapeHtml(block.position || block.id || '')}</div>
+          <button class="sheetChooseBtn" type="button" data-direct-choose="1">이 칸 선택</button>
+        </div>`;
       return `
         <div class="sheetBlock ${cardClass}" data-block-index="${Number(block.index)}">
           <div class="sheetBlockTop">
             <div class="sheetBlockName" title="${escapeHtml(displayName)}">${escapeHtml(displayName)}</div>
             <div class="sheetBlockTotal">누적 ${Number(block.total || 0).toLocaleString('ko-KR')}자</div>
           </div>
-          <div class="sheetBlockMeta">${escapeHtml(state.sheetName || '')} · ${escapeHtml(block.position || block.id || '')}${locked ? ' · 다른 사용자 칸' : ''}${escapeHtml(pendingLabel)}</div>
+          <div class="sheetBlockMeta">${escapeHtml(state.sheetName || '')} · ${escapeHtml(block.position || block.id || '')}${escapeHtml(pendingLabel)}</div>
           <div class="sheetEntryGrid">
             <div class="sheetEntryLine">
               <label>기준</label>
@@ -2855,8 +2929,39 @@ window.guideSave = async function(){
               <button type="button" data-direct-save="1" data-kind="current" ${canEdit ? '' : 'disabled'}>반영</button>
             </div>
           </div>
+          ${selected && !pending ? '<button class="sheetChooseBtn" type="button" data-direct-unchoose="1">이 칸 선택 취소</button>' : ''}
         </div>`;
     }).join('');
+    if (!visibleBlocks.length) root.innerHTML = '<div class="sheetEmptyState">현재 표시할 내 작업 칸이나 사용 가능한 빈 칸이 없습니다.</div>';
+  }
+
+  function chooseDirectSlot_(index){
+    const viewer = directNormalizeName_(myName());
+    const block = directSheetState_ && Array.isArray(directSheetState_.blocks)
+      ? directSheetState_.blocks.find((item)=>Number(item.index) === Number(index)) : null;
+    if (!viewer) { directSetStatus_('상단 닉네임을 먼저 입력해 주세요.', 'error'); return; }
+    if (!block || directNormalizeName_(block.name)) { directSetStatus_('이미 사용 중인 칸입니다. 새로고침 후 다른 칸을 골라 주세요.', 'error'); return; }
+    directSelectedEmptyBlocks_.add(Number(index));
+    directSlotPickerOpen_ = false;
+    renderDirectSheet_();
+    directSetStatus_('새 작업 칸을 선택했어요. 기준값을 저장하면 같은 닉네임으로 등록되고 기존 시트에서 합산됩니다.', 'ok');
+  }
+
+  function unchooseDirectSlot_(index){
+    directSelectedEmptyBlocks_.delete(Number(index));
+    renderDirectSheet_();
+    directSetStatus_('선택을 취소했습니다. 필요하면 다른 빈 칸을 골라 주세요.');
+  }
+
+  function toggleDirectSlotPicker_(){
+    const viewer = directNormalizeName_(myName());
+    if (!viewer) { directSetStatus_('상단 닉네임을 먼저 입력해 주세요.', 'error'); return; }
+    const available = directSheetState_ && Array.isArray(directSheetState_.blocks)
+      ? directSheetState_.blocks.some((block)=>!directNormalizeName_(block.name)) : false;
+    if (!available) { directSetStatus_('현재 선택할 수 있는 빈 칸이 없습니다.', 'error'); return; }
+    directSlotPickerOpen_ = !directSlotPickerOpen_;
+    renderDirectSheet_();
+    directSetStatus_(directSlotPickerOpen_ ? '추가로 사용할 빈 칸을 골라 주세요.' : '추가 선택 화면을 닫았습니다.');
   }
 
   async function loadDirectSheet_(options){
@@ -2942,6 +3047,8 @@ window.guideSave = async function(){
       );
       if (res.sheetName) directSheetState_.sheetName = res.sheetName;
     }
+    directSelectedEmptyBlocks_.delete(Number(job.index));
+    directSlotPickerOpen_ = false;
     setDirectPending_(job, false);
   }
 
@@ -2997,6 +3104,7 @@ window.guideSave = async function(){
             rollbackDirectOptimistic_(job);
             finishDirectJob_();
             directSetStatus_(msg, 'error');
+            if (res && res.reason === 'NAME_MISMATCH') setTimeout(()=>loadDirectSheet_({ silent:true }), 0);
             continue;
           }
           applyDirectResult_(job, res);
@@ -3683,7 +3791,7 @@ window.guideSave = async function(){
     if (valEl) valEl.addEventListener('wheel', (event)=>{
       event.preventDefault();
       markUserGesture();
-      apply(currentH + (event.deltaY < 0 ? 10 : -10));
+      apply(currentH + (event.deltaY < 0 ? 1 : -1));
     }, { passive:false });
     apply(currentH);
   }
@@ -3695,6 +3803,7 @@ window.guideSave = async function(){
     const down = $('soundVolDown');
     const up = $('soundVolUp');
     const volValEl = $('soundVolVal');
+    const slider = $('soundVol');
     const minVol = 50;
     const maxVol = 800;
     const stepVol = 1;
@@ -3705,6 +3814,7 @@ window.guideSave = async function(){
       currentVol = Math.max(minVol, Math.min(maxVol, Math.round(Number(next) / stepVol) * stepVol));
       soundMult = currentVol / 100;
       volValEl.textContent = currentVol + '%';
+      if (slider) slider.value = String(currentVol);
       localStorage.setItem('VENT_SOUND_MULT', String(currentVol));
       applyCustomSoundVolume_();
       if (down) down.disabled = currentVol <= minVol;
@@ -3712,6 +3822,15 @@ window.guideSave = async function(){
     };
     bindHoldStepper_(down, -1, (dir)=>apply(currentVol + dir * stepVol));
     bindHoldStepper_(up, 1, (dir)=>apply(currentVol + dir * stepVol));
+    if (slider) slider.addEventListener('input', ()=>{
+      markUserGesture();
+      apply(Number(slider.value));
+    });
+    if (volValEl) volValEl.addEventListener('wheel', (event)=>{
+      event.preventDefault();
+      markUserGesture();
+      apply(currentVol + (event.deltaY < 0 ? 1 : -1));
+    }, { passive:false });
     apply(currentVol);
   }
 
@@ -3722,9 +3841,15 @@ window.guideSave = async function(){
   $('sendBtn').addEventListener('click', send);
   $('btnModeChat').addEventListener('click', ()=>setRecordMode_('chat'));
   $('btnModeSheet').addEventListener('click', ()=>setRecordMode_('sheet'));
+  $('btnDirectAddSlot').addEventListener('click', toggleDirectSlotPicker_);
   $('btnDirectRefresh').addEventListener('click', loadDirectSheet_);
   $('sheetBlockList').addEventListener('click', (e)=>{
-    const btn = e.target && e.target.closest ? e.target.closest('[data-direct-save="1"]') : null;
+    if (!e.target || !e.target.closest) return;
+    const choose = e.target.closest('[data-direct-choose="1"]');
+    if (choose) { const card=choose.closest('.sheetBlock'); if(card) chooseDirectSlot_(Number(card.dataset.blockIndex)); return; }
+    const unchoose = e.target.closest('[data-direct-unchoose="1"]');
+    if (unchoose) { const card=unchoose.closest('.sheetBlock'); if(card) unchooseDirectSlot_(Number(card.dataset.blockIndex)); return; }
+    const btn = e.target.closest('[data-direct-save="1"]');
     if (btn) handleDirectSave_(btn);
   });
   // 🚩 시작 스냅샷(기준) 버튼
