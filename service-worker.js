@@ -1,7 +1,7 @@
 // 마끝마 뽀모 PWA Service Worker
-// v4.4.8 — 사용자 알림음 복원·재생 안정화
+// v4.4.9 — 접속자 스냅샷 안정화
 
-const CACHE_NAME = 'pomo-github-standalone-v4-4-8-20260801-custom-sound-v1';
+const CACHE_NAME = 'pomo-github-standalone-v4-4-9-20260802-presence-stable-v1';
 const STATIC_ASSETS = [
   './offline.html',
   './manifest.webmanifest',

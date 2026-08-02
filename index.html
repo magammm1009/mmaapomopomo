@@ -1,5 +1,5 @@
 <!doctype html>
-<!-- POMO GitHub standalone v4.4.8 / 2026-08-01 / 사용자 알림음 복원·재생 안정화 -->
+<!-- POMO GitHub standalone v4.4.9 / 2026-08-02 / 접속자 스냅샷 안정화 -->
 <html>
 <head>
   <meta charset="utf-8"/>
@@ -10,11 +10,11 @@
   <link rel="manifest" href="./manifest.webmanifest" />
   <link rel="icon" href="./icons/icon-192.png" />
   <link rel="apple-touch-icon" href="./icons/icon-192.png" />
-  <script src="./config.js?v=20260801-custom-sound-v4-4-8"></script>
+  <script src="./config.js?v=20260802-presence-stable-v4-4-9"></script>
   <script>
   (function(){
     'use strict';
-    const VERSION = 'github-standalone-v4.4.8-custom-sound-20260801';
+    const VERSION = 'github-standalone-v4.4.9-presence-stable-20260802';
     const cfg = window.POMO_APP_CONFIG || {};
     const endpoint = String(cfg.POMO_APP_URL || '').trim();
     const isMissing = !endpoint || endpoint.includes('여기에_Apps_Script') || endpoint.includes('YOUR_');
@@ -1299,6 +1299,9 @@
   let presenceRegisteredOnServer = false;
   let presenceLeaving = false;
   let presenceSnapshotSyncTimer = null;
+  let presenceSnapshotRefreshTimer = null;
+  let presenceSnapshotLatestEntries = [];
+  let lastPresenceSnapshotSyncAt = 0;
   let lastPresenceSnapshotHash = '';
   let presenceNameSyncTimer = null;
 
@@ -2167,18 +2170,22 @@ window.guideSave = async function(){
     return { count: entries.length, names: dis.sort((a,b)=>a.localeCompare(b,'ko')), entries };
   }
 
-  function schedulePresenceSnapshotSync_(entries){
+  function schedulePresenceSnapshotSync_(entries, forceRefresh){
     const clean = Array.isArray(entries)
       ? entries
           .map(it=>({ clientId:String(it && it.clientId || '').trim(), name:String(it && it.name || '').trim().slice(0,12) || '익명' }))
           .filter(it=>it.clientId)
           .sort((a,b)=>a.clientId.localeCompare(b.clientId))
       : [];
+    presenceSnapshotLatestEntries = clean;
 
-    // 현재 접속자 중 clientId가 가장 앞선 한 기기만 서버 복제본을 갱신
-    if (!clean.length || clean[0].clientId !== CLIENT_ID || presenceLeaving) return;
+    // 명단 변화는 대표 1기기만 전송하되, 주기 갱신은 새 버전 접속자라면
+    // 누구든 보낼 수 있게 해 구 버전 기기가 대표일 때도 서버 스냅샷이 만료되지 않게 한다.
+    if (!clean.length || presenceLeaving) return;
+    if (!forceRefresh && clean[0].clientId !== CLIENT_ID) return;
     const hash = JSON.stringify(clean);
-    if (hash === lastPresenceSnapshotHash) return;
+    const refreshDue = (Date.now() - lastPresenceSnapshotSyncAt) >= 55 * 1000;
+    if (!forceRefresh && hash === lastPresenceSnapshotHash && !refreshDue) return;
     lastPresenceSnapshotHash = hash;
 
     if (presenceSnapshotSyncTimer) clearTimeout(presenceSnapshotSyncTimer);
@@ -2195,6 +2202,7 @@ window.guideSave = async function(){
           schedulePresenceSnapshotSync_(clean);
           return;
         }
+        lastPresenceSnapshotSyncAt = Date.now();
         if (!firebasePresenceReady) applyServerPresence_(res);
       }catch(e){
         // Firebase 화면 원본은 이미 정상이라 서버 복제 실패가 UI를 0명으로 만들지 않음
@@ -2210,6 +2218,9 @@ window.guideSave = async function(){
 
     stopPresenceLive_();
     presenceLiveRoomId = rid;
+    presenceSnapshotRefreshTimer = setInterval(()=>{
+      schedulePresenceSnapshotSync_(presenceSnapshotLatestEntries, true);
+    }, 60 * 1000);
 
     try{
       const root = window.FB.ref(window.FB.db, fbPresenceConnPath_(rid));
@@ -2233,6 +2244,13 @@ window.guideSave = async function(){
 
   function stopPresenceLive_(){
     try{ if (presenceLiveUnsub) presenceLiveUnsub(); }catch(e){}
+    try{ if (presenceSnapshotRefreshTimer) clearInterval(presenceSnapshotRefreshTimer); }catch(e){}
+    try{ if (presenceSnapshotSyncTimer) clearTimeout(presenceSnapshotSyncTimer); }catch(e){}
+    presenceSnapshotRefreshTimer = null;
+    presenceSnapshotSyncTimer = null;
+    presenceSnapshotLatestEntries = [];
+    lastPresenceSnapshotHash = '';
+    lastPresenceSnapshotSyncAt = 0;
     presenceLiveUnsub = null;
     presenceLiveRoomId = null;
     presenceLiveVal = null;
