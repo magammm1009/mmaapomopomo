@@ -1,7 +1,7 @@
 // 마끝마 뽀모 PWA Service Worker
-// v4.4.10 — 사용자 알림음 단일 재생·기본음 차단
+// v4.4.11 — GitHub 단일 알림 주체·다중 창 차단
 
-const CACHE_NAME = 'pomo-github-standalone-v4-4-10-20260802-custom-sound-single-v1';
+const CACHE_NAME = 'pomo-github-standalone-v4-4-11-20260802-audio-owner-v1';
 const STATIC_ASSETS = [
   './offline.html',
   './manifest.webmanifest',

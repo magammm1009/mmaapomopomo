@@ -1,5 +1,5 @@
 <!doctype html>
-<!-- POMO GitHub standalone v4.4.10 / 2026-08-02 / 사용자 알림음 단일 재생·기본음 차단 -->
+<!-- POMO GitHub standalone v4.4.11 / 2026-08-02 / GitHub 단일 알림 주체·다중 창 차단 -->
 <html>
 <head>
   <meta charset="utf-8"/>
@@ -10,11 +10,11 @@
   <link rel="manifest" href="./manifest.webmanifest" />
   <link rel="icon" href="./icons/icon-192.png" />
   <link rel="apple-touch-icon" href="./icons/icon-192.png" />
-  <script src="./config.js?v=20260802-custom-sound-single-v4-4-10"></script>
+  <script src="./config.js?v=20260802-audio-owner-v4-4-11"></script>
   <script>
   (function(){
     'use strict';
-    const VERSION = 'github-standalone-v4.4.10-custom-sound-single-20260802';
+    const VERSION = 'github-standalone-v4.4.11-audio-owner-20260802';
     const cfg = window.POMO_APP_CONFIG || {};
     const endpoint = String(cfg.POMO_APP_URL || '').trim();
     const isMissing = !endpoint || endpoint.includes('여기에_Apps_Script') || endpoint.includes('YOUR_');
@@ -1328,6 +1328,10 @@
   let lastPomSeq = 0;
   let lastPhase = null;
   const playedPhaseAlarmTokens_ = new Set();
+  const PHASE_AUDIO_LEADER_KEY = 'MMAGAM_POMO_PHASE_AUDIO_LEADER_V1';
+  const PHASE_AUDIO_LEASE_MS = 15000;
+  const phaseAudioInstanceId_ = `${Date.now()}_${Math.random().toString(36).slice(2)}`;
+  let phaseAudioLeaderRenewTimer_ = null;
   let audioCtx = null;
   let keepAliveOsc = null;
   let keepAliveGain = null;
@@ -3951,7 +3955,69 @@ window.guideSave = async function(){
     return true;
   }
 
+  function readPhaseAudioLeader_(){
+    try{
+      const parsed = JSON.parse(localStorage.getItem(PHASE_AUDIO_LEADER_KEY) || 'null');
+      if (!parsed || typeof parsed !== 'object') return null;
+      return {
+        id: String(parsed.id || ''),
+        expiresAt: Math.max(0, Number(parsed.expiresAt) || 0)
+      };
+    }catch(e){
+      return null;
+    }
+  }
+
+  function renewPhaseAudioLeadership_(){
+    try{
+      const current = readPhaseAudioLeader_();
+      if (!current || current.id !== phaseAudioInstanceId_) return false;
+      localStorage.setItem(PHASE_AUDIO_LEADER_KEY, JSON.stringify({
+        id: phaseAudioInstanceId_,
+        expiresAt: Date.now() + PHASE_AUDIO_LEASE_MS
+      }));
+      return true;
+    }catch(e){
+      // localStorage를 쓸 수 없는 브라우저에서는 기존 단일 창 동작을 유지합니다.
+      return true;
+    }
+  }
+
+  function claimPhaseAudioLeadership_(){
+    const now = Date.now();
+    try{
+      const current = readPhaseAudioLeader_();
+      if (current && current.id !== phaseAudioInstanceId_ && current.expiresAt > now) return false;
+      localStorage.setItem(PHASE_AUDIO_LEADER_KEY, JSON.stringify({
+        id: phaseAudioInstanceId_,
+        expiresAt: now + PHASE_AUDIO_LEASE_MS
+      }));
+      const confirmed = readPhaseAudioLeader_();
+      if (!confirmed || confirmed.id !== phaseAudioInstanceId_) return false;
+      if (!phaseAudioLeaderRenewTimer_){
+        phaseAudioLeaderRenewTimer_ = setInterval(renewPhaseAudioLeadership_, 5000);
+      }
+      return true;
+    }catch(e){
+      return true;
+    }
+  }
+
+  function releasePhaseAudioLeadership_(){
+    if (phaseAudioLeaderRenewTimer_){
+      clearInterval(phaseAudioLeaderRenewTimer_);
+      phaseAudioLeaderRenewTimer_ = null;
+    }
+    try{
+      const current = readPhaseAudioLeader_();
+      if (current && current.id === phaseAudioInstanceId_) localStorage.removeItem(PHASE_AUDIO_LEADER_KEY);
+    }catch(e){}
+  }
+
   async function playPhaseSound(phase, alarmToken){
+    if (!soundEnabled || !userGestured) return;
+    // 같은 GitHub 앱을 일반 탭/PWA 등으로 여러 번 열어도 한 창만 전환음을 담당합니다.
+    if (!claimPhaseAudioLeadership_()) return;
     if (!claimPhaseAlarmToken_(alarmToken)) return;
     const soundPhase = normalizeSoundPhase_(phase);
     await ensureCustomSoundsLoaded_();
@@ -4545,6 +4611,8 @@ window.guideSave = async function(){
       }).catch(()=>{});
     }catch(e){}
   }
+
+  window.addEventListener('pagehide', releasePhaseAudioLeadership_);
 
   document.addEventListener('visibilitychange', ()=>{
     if (!document.hidden && userGestured && soundEnabled){
