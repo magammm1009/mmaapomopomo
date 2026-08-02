@@ -1,7 +1,7 @@
 // 마끝마 뽀모 PWA Service Worker
-// v4.4.15 — 사용자 MP3 상태 동기화·단일 알림
+// v4.4.16 — 기기 간(PWA+탭) 알림 중복 방지
 
-const CACHE_NAME = 'pomo-github-standalone-v4-4-15-20260802-single-sound-v1';
+const CACHE_NAME = 'pomo-github-standalone-v4-4-16-20260802-dual-instance-v1';
 const STATIC_ASSETS = [
   './offline.html',
   './manifest.webmanifest',

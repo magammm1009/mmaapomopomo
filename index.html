@@ -1,5 +1,5 @@
 <!doctype html>
-<!-- POMO GitHub standalone v4.4.15 / 2026-08-02 / 사용자 MP3 상태 동기화·단일 알림 -->
+<!-- POMO GitHub standalone v4.4.16 / 2026-08-02 / 기기 간(PWA+탭) 알림 중복 방지 -->
 <html>
 <head>
   <meta charset="utf-8"/>
@@ -10,11 +10,11 @@
   <link rel="manifest" href="./manifest.webmanifest" />
   <link rel="icon" href="./icons/icon-192.png" />
   <link rel="apple-touch-icon" href="./icons/icon-192.png" />
-  <script src="./config.js?v=20260802-single-sound-v4-4-15"></script>
+  <script src="./config.js?v=20260802-dual-instance-v4-4-16"></script>
   <script>
   (function(){
     'use strict';
-    const VERSION = 'github-standalone-v4.4.15-single-sound-20260802';
+    const VERSION = 'github-standalone-v4.4.16-dual-instance-20260802';
     const cfg = window.POMO_APP_CONFIG || {};
     const endpoint = String(cfg.POMO_APP_URL || '').trim();
     const isMissing = !endpoint || endpoint.includes('여기에_Apps_Script') || endpoint.includes('YOUR_');
@@ -1337,6 +1337,28 @@
   const PHASE_AUDIO_LEASE_MS = 15000;
   const phaseAudioInstanceId_ = `${Date.now()}_${Math.random().toString(36).slice(2)}`;
   let phaseAudioLeaderRenewTimer_ = null;
+  // ✅ 설치된 PWA와 브라우저 탭은 localStorage를 공유하지 않을 수 있어(관찰된 실제 사고 사례),
+  // 로컬 잠금과 별개로 Firebase(모든 창이 공유하는 서버)를 통해 같은 기기의 창들을 한 번 더 조율합니다.
+  const PHASE_AUDIO_FB_PATH_ = 'pomoPhaseAudioLeader';
+  let phaseAudioFingerprintCache_ = '';
+  function phaseAudioDeviceFingerprint_(){
+    if (phaseAudioFingerprintCache_) return phaseAudioFingerprintCache_;
+    try{
+      const raw = [
+        navigator.userAgent || '',
+        navigator.platform || '',
+        screen.width || 0,
+        screen.height || 0,
+        navigator.language || ''
+      ].join('|');
+      let hash = 0;
+      for (let i = 0; i < raw.length; i++) { hash = ((hash << 5) - hash + raw.charCodeAt(i)) | 0; }
+      phaseAudioFingerprintCache_ = 'fp_' + Math.abs(hash).toString(36);
+    }catch(e){
+      phaseAudioFingerprintCache_ = 'fp_unknown';
+    }
+    return phaseAudioFingerprintCache_;
+  }
   let audioCtx = null;
   let keepAliveOsc = null;
   let keepAliveGain = null;
@@ -4113,12 +4135,39 @@ window.guideSave = async function(){
     }catch(e){}
   }
 
+  // ✅ 같은 브라우저의 설치된 PWA와 일반 탭이 storage를 공유하지 않는 경우를 대비한
+  // 서버(Firebase) 기반 2차 조율. 같은 경계(token)를 두 창이 동시에 잡으면,
+  // 나중에 재확인했을 때 이 창의 id가 아니면 알림을 양보합니다.
+  async function claimPhaseAudioLeadershipRemote_(token){
+    try{
+      if (!window.FB || !window.FB.db || !token) return true;
+      await window.FB.ensureAnonAuth();
+      const path = `${PHASE_AUDIO_FB_PATH_}/${phaseAudioDeviceFingerprint_()}`;
+      const r = window.FB.ref(window.FB.db, path);
+      const now = Date.now();
+      const snap = await window.FB.get(r);
+      const cur = snap && snap.exists() ? snap.val() : null;
+      if (cur && cur.token === token && cur.id !== phaseAudioInstanceId_ && cur.expiresAt > now) {
+        return false;
+      }
+      await window.FB.set(r, { id: phaseAudioInstanceId_, token, expiresAt: now + PHASE_AUDIO_LEASE_MS });
+      await new Promise((resolve) => setTimeout(resolve, 250));
+      const confirmSnap = await window.FB.get(r);
+      const confirmed = confirmSnap && confirmSnap.exists() ? confirmSnap.val() : null;
+      return !!(confirmed && confirmed.id === phaseAudioInstanceId_ && confirmed.token === token);
+    }catch(e){
+      // 원격 확인이 실패해도 알림 자체가 사라지지 않도록 로컬 판단을 그대로 따릅니다.
+      return true;
+    }
+  }
+
   async function playPhaseSound(phase, alarmToken){
     if (!soundEnabled || !userGestured) return;
     return withPhaseAudioLock_(async() => {
       // 같은 GitHub 앱을 일반 탭/PWA 등으로 여러 번 열어도 한 창만 전환음을 담당합니다.
       if (!claimPhaseAudioLeadership_()) return false;
       if (!claimPhaseAlarmToken_(alarmToken)) return false;
+      if (!(await claimPhaseAudioLeadershipRemote_(alarmToken))) return false;
       const soundPhase = normalizeSoundPhase_(phase);
       await ensureCustomSoundsLoaded_();
 
@@ -5068,37 +5117,6 @@ window.guideSave = async function(){
   // 메뉴가 늦게 그려지는 예외 상황까지 방어
   setTimeout(bindInstallButton, 300);
   setTimeout(bindInstallButton, 1200);
-
-  // ===== DEBUG INSTRUMENTATION (temporary, for local diagnosis only) =====
-  window.__DBG_LOG = [];
-  function __dbg(name, extra){
-    const rec = { t: Date.now(), name, extra: extra };
-    window.__DBG_LOG.push(rec);
-    console.log('[DBG]', name, extra || '');
-  }
-  const __orig_beep = beep;
-  beep = function(...args){ __dbg('beep', args); return __orig_beep.apply(this, args); };
-  const __orig_playDefaultPhaseSound_ = playDefaultPhaseSound_;
-  playDefaultPhaseSound_ = function(...args){ __dbg('playDefaultPhaseSound_', args); return __orig_playDefaultPhaseSound_.apply(this, args); };
-  const __orig_playCustomSound_ = playCustomSound_;
-  playCustomSound_ = function(...args){ __dbg('playCustomSound_', args); return __orig_playCustomSound_.apply(this, args); };
-  const __orig_playPhaseSound = playPhaseSound;
-  playPhaseSound = function(...args){ __dbg('playPhaseSound', args); return __orig_playPhaseSound.apply(this, args); };
-  const __orig_shouldPlayAutoPhaseAlarm_ = shouldPlayAutoPhaseAlarm_;
-  shouldPlayAutoPhaseAlarm_ = function(...args){ const r = __orig_shouldPlayAutoPhaseAlarm_.apply(this, args); __dbg('shouldPlayAutoPhaseAlarm_', { args, result: r }); return r; };
-  const __orig_phasePrefersCustomSound_ = phasePrefersCustomSound_;
-  phasePrefersCustomSound_ = function(...args){ const r = __orig_phasePrefersCustomSound_.apply(this, args); __dbg('phasePrefersCustomSound_', { args, result: r }); return r; };
-  const __orig_hasCustomSound_ = hasCustomSound_;
-  hasCustomSound_ = function(...args){ const r = __orig_hasCustomSound_.apply(this, args); __dbg('hasCustomSound_', { args, result: r }); return r; };
-  const __orig_refreshCustomSoundPhaseFromBrowser_ = refreshCustomSoundPhaseFromBrowser_;
-  refreshCustomSoundPhaseFromBrowser_ = function(...args){ __dbg('refreshCustomSoundPhaseFromBrowser_', args); return __orig_refreshCustomSoundPhaseFromBrowser_.apply(this, args); };
-  const __orig_claimPhaseAudioLeadership_ = claimPhaseAudioLeadership_;
-  claimPhaseAudioLeadership_ = function(...args){ const r = __orig_claimPhaseAudioLeadership_.apply(this, args); __dbg('claimPhaseAudioLeadership_', { result: r }); return r; };
-  const __orig_claimPhaseAlarmToken_ = claimPhaseAlarmToken_;
-  claimPhaseAlarmToken_ = function(...args){ const r = __orig_claimPhaseAlarmToken_.apply(this, args); __dbg('claimPhaseAlarmToken_', { args, result: r }); return r; };
-
-  window.__DBG_STATE = () => ({ soundEnabled, userGestured, lastAutoAlarmSeq_, isStopped, hasWork: hasCustomSound_('work'), hasBreak: hasCustomSound_('break') });
-  console.log('[DBG] instrumentation ready v4.4.15 (read-only logging, no behavior change)');
 })();
 </script>
 
