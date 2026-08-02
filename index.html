@@ -1,5 +1,5 @@
 <!doctype html>
-<!-- POMO GitHub standalone v4.4.16 / 2026-08-02 / 기기 간(PWA+탭) 알림 중복 방지 -->
+<!-- POMO GitHub standalone v4.4.15 / 2026-08-02 / 지연 응답 시계 보정 제거·단방향 전환 알림 -->
 <html>
 <head>
   <meta charset="utf-8"/>
@@ -10,11 +10,11 @@
   <link rel="manifest" href="./manifest.webmanifest" />
   <link rel="icon" href="./icons/icon-192.png" />
   <link rel="apple-touch-icon" href="./icons/icon-192.png" />
-  <script src="./config.js?v=20260802-dual-instance-v4-4-16"></script>
+  <script src="./config.js?v=20260802-timer-transition-v4-4-14"></script>
   <script>
   (function(){
     'use strict';
-    const VERSION = 'github-standalone-v4.4.16-dual-instance-20260802';
+    const VERSION = 'github-standalone-v4.4.15-exclusive-audio-20260802';
     const cfg = window.POMO_APP_CONFIG || {};
     const endpoint = String(cfg.POMO_APP_URL || '').trim();
     const isMissing = !endpoint || endpoint.includes('여기에_Apps_Script') || endpoint.includes('YOUR_');
@@ -1250,6 +1250,7 @@
   const WORK_SEC = 25 * 60;
   const BREAK_SEC = 5 * 60;
   const AUTO_CYCLE_SEC = WORK_SEC + BREAK_SEC;
+  const AUTO_PHASES_PER_DAY = Math.floor(86400 / AUTO_CYCLE_SEC) * 2;
   const KST_OFFSET_MS = 9 * 60 * 60 * 1000;
   const CMD_QUEUE_STORAGE_KEY = 'VENT_CMD_QUEUE_V1';
   const RECORD_MODE_STORAGE_KEY = 'VENT_RECORD_MODE_V1';
@@ -1332,39 +1333,19 @@
   let lastPhase = null;
   const playedPhaseAlarmTokens_ = new Set();
   const PHASE_AUDIO_LEADER_KEY = 'MMAGAM_POMO_PHASE_AUDIO_LEADER_V1';
-  const PHASE_LAST_ALARM_TOKEN_KEY = 'MMAGAM_POMO_PHASE_LAST_ALARM_TOKEN_V1';
-  const PHASE_AUDIO_LOCK_NAME = 'MMAGAM_POMO_PHASE_AUDIO_LOCK_V1';
   const PHASE_AUDIO_LEASE_MS = 15000;
   const phaseAudioInstanceId_ = `${Date.now()}_${Math.random().toString(36).slice(2)}`;
   let phaseAudioLeaderRenewTimer_ = null;
-  // ✅ 설치된 PWA와 브라우저 탭은 localStorage를 공유하지 않을 수 있어(관찰된 실제 사고 사례),
-  // 로컬 잠금과 별개로 Firebase(모든 창이 공유하는 서버)를 통해 같은 기기의 창들을 한 번 더 조율합니다.
-  const PHASE_AUDIO_FB_PATH_ = 'pomoPhaseAudioLeader';
-  let phaseAudioFingerprintCache_ = '';
-  function phaseAudioDeviceFingerprint_(){
-    if (phaseAudioFingerprintCache_) return phaseAudioFingerprintCache_;
-    try{
-      const raw = [
-        navigator.userAgent || '',
-        navigator.platform || '',
-        screen.width || 0,
-        screen.height || 0,
-        navigator.language || ''
-      ].join('|');
-      let hash = 0;
-      for (let i = 0; i < raw.length; i++) { hash = ((hash << 5) - hash + raw.charCodeAt(i)) | 0; }
-      phaseAudioFingerprintCache_ = 'fp_' + Math.abs(hash).toString(36);
-    }catch(e){
-      phaseAudioFingerprintCache_ = 'fp_unknown';
-    }
-    return phaseAudioFingerprintCache_;
-  }
   let audioCtx = null;
   let keepAliveOsc = null;
   let keepAliveGain = null;
   let keepAliveOn = false;
   let keepAliveStarting = false;
   let lastAudioError = '';
+  // 기본음은 여러 개의 지연 타이머로 이어지므로 사용자 MP3와 절대 겹치지 않게 추적합니다.
+  let defaultPhaseSoundRunId_ = 0;
+  const defaultPhaseSoundTimers_ = new Set();
+  const defaultPhaseSoundNodes_ = new Set();
 
   // 공용 타이머 제어 상태/실시간 동기화
   let controlBusy = false;
@@ -1387,9 +1368,6 @@
   const CUSTOM_SOUND_MAX_BYTES = 8 * 1024 * 1024;
   const CUSTOM_SOUND_MAX_PLAY_MS = 20 * 1000;
   const SOUND_PHASES = ['work', 'break'];
-  const CUSTOM_SOUND_PRESENCE_KEY = 'MMAGAM_POMO_CUSTOM_SOUND_PRESENCE_V1';
-  const CUSTOM_SOUND_SYNC_CHANNEL = 'MMAGAM_POMO_CUSTOM_SOUND_SYNC_V1';
-  let customSoundSyncChannel_ = null;
 
   function createCustomSoundSlot_(){
     return {
@@ -1416,6 +1394,9 @@
   let customSoundsLoadPromise = null;
   let customSoundsLoaded = false;
   let soundPickerTarget = 'work';
+  const CUSTOM_SOUND_SYNC_CHANNEL = 'MMAGAM_POMO_SOUND_SYNC_V1';
+  const CUSTOM_SOUND_SYNC_STORAGE_KEY = 'MMAGAM_POMO_SOUND_SYNC_EVENT_V1';
+  let customSoundSyncChannel_ = null;
 
   // 고유 클라이언트 ID
   const CLIENT_ID = getClientId();
@@ -2795,7 +2776,7 @@ window.guideSave = async function(){
       ok:true, isRunning:true, autoTimer:true, timezone:'Asia/Seoul', dayKey,
       phase, phaseSeconds, remaining:phaseSeconds - phaseElapsed,
       phaseStartMs:nowMs - phaseElapsed * 1000,
-      seq:dayIndex * 48 + cycleIndex * 2 + (isWork ? 0 : 1),
+      seq:dayIndex * AUTO_PHASES_PER_DAY + cycleIndex * 2 + (isWork ? 0 : 1),
       serverNowMs:nowMs
     };
   }
@@ -2958,6 +2939,7 @@ window.guideSave = async function(){
     isStopped = true;
     stopAudioKeepAlive_();
     stopCustomSound_();
+    stopDefaultPhaseSound_();
   }
   function handleSessionEnded(){
     stopAll();
@@ -3516,68 +3498,6 @@ window.guideSave = async function(){
     return SOUND_PHASES.some((phase) => hasCustomSound_(phase));
   }
 
-  function readSharedCustomSoundPresence_(){
-    try{
-      const saved = JSON.parse(localStorage.getItem(CUSTOM_SOUND_PRESENCE_KEY) || 'null');
-      return {
-        work: !!(saved && saved.work),
-        break: !!(saved && saved.break),
-        revision: Math.max(0, Number(saved && saved.revision) || 0)
-      };
-    }catch(e){
-      return { work:false, break:false, revision:0 };
-    }
-  }
-
-  function phasePrefersCustomSound_(phase){
-    const normalized = normalizeSoundPhase_(phase);
-    if (hasCustomSound_(normalized)) return true;
-    return !!readSharedCustomSoundPresence_()[normalized];
-  }
-
-  function publishCustomSoundPresence_(phase, enabled){
-    const normalized = normalizeSoundPhase_(phase);
-    const next = readSharedCustomSoundPresence_();
-    next[normalized] = !!enabled;
-    next.revision = Date.now();
-    try{ localStorage.setItem(CUSTOM_SOUND_PRESENCE_KEY, JSON.stringify(next)); }catch(e){}
-    try{
-      if (customSoundSyncChannel_) {
-        customSoundSyncChannel_.postMessage({ phase:normalized, enabled:!!enabled, revision:next.revision });
-      }
-    }catch(e){}
-  }
-
-  async function refreshCustomSoundPhaseFromBrowser_(phase){
-    const normalized = normalizeSoundPhase_(phase);
-    try{
-      const record = await customSoundDbGet_(CUSTOM_SOUND_KEYS[normalized]);
-      if (record && record.blob instanceof Blob) applyCustomSoundRecord_(normalized, record);
-      else clearCustomSoundRuntime_(normalized);
-      customSoundStorageAvailable = true;
-      updateCustomSoundUI_(normalized);
-      return hasCustomSound_(normalized);
-    }catch(e){
-      return false;
-    }
-  }
-
-  function setupCustomSoundSync_(){
-    if (!customSoundSyncChannel_ && 'BroadcastChannel' in window) {
-      try{
-        customSoundSyncChannel_ = new BroadcastChannel(CUSTOM_SOUND_SYNC_CHANNEL);
-        customSoundSyncChannel_.addEventListener('message', (event) => {
-          const phase = normalizeSoundPhase_(event && event.data && event.data.phase);
-          refreshCustomSoundPhaseFromBrowser_(phase).catch(()=>{});
-        });
-      }catch(e){ customSoundSyncChannel_ = null; }
-    }
-    window.addEventListener('storage', (event) => {
-      if (event.key !== CUSTOM_SOUND_PRESENCE_KEY) return;
-      SOUND_PHASES.forEach((phase) => refreshCustomSoundPhaseFromBrowser_(phase).catch(()=>{}));
-    });
-  }
-
   function shortSoundName_(name){
     const s = String(name || '').trim();
     if (!s) return '';
@@ -3711,6 +3631,7 @@ window.guideSave = async function(){
 
   function applyCustomSoundRecord_(phase, record){
     if (!record || !(record.blob instanceof Blob)) return false;
+    stopDefaultPhaseSound_();
     const normalized = normalizeSoundPhase_(phase);
     const slot = getCustomSoundSlot_(normalized);
     clearCustomSoundRuntime_(normalized);
@@ -3867,6 +3788,9 @@ window.guideSave = async function(){
     if (!soundEnabled || !userGestured || !hasCustomSound_(normalized)) return false;
     const slot = getCustomSoundSlot_(normalized);
 
+    // 사용자 MP3가 시작되면 이전 기본음의 남은 예약을 즉시 폐기합니다.
+    stopDefaultPhaseSound_();
+
     try{
       const ready = await ensureAudio_();
       if (!ready || !audioCtx) throw new Error(lastAudioError || '오디오가 아직 잠겨 있어요.');
@@ -3964,8 +3888,6 @@ window.guideSave = async function(){
         applyCustomSoundRecord_('break', breakRecord);
       }
       customSoundStorageAvailable = true;
-      publishCustomSoundPresence_('work', hasCustomSound_('work'));
-      publishCustomSoundPresence_('break', hasCustomSound_('break'));
     }catch(e){
       customSoundStorageAvailable = false;
     }
@@ -3988,6 +3910,65 @@ window.guideSave = async function(){
     return customSoundsLoadPromise;
   }
 
+  async function reloadCustomSoundPhaseFromBrowser_(phase){
+    const normalized = normalizeSoundPhase_(phase);
+    await ensureCustomSoundsLoaded_();
+    try{
+      const record = await customSoundDbGet_(CUSTOM_SOUND_KEYS[normalized]);
+      if (record && record.blob instanceof Blob) {
+        applyCustomSoundRecord_(normalized, record);
+        await primeOneCustomSound_(normalized).catch(()=>false);
+      } else {
+        clearCustomSoundRuntime_(normalized);
+        updateCustomSoundUI_(normalized);
+      }
+    }catch(e){
+      // 다른 창의 동기화 실패가 현재 창의 기존 설정까지 지우지는 않게 둡니다.
+    }
+  }
+
+  function handleCustomSoundSyncEvent_(payload){
+    if (!payload || typeof payload !== 'object') return;
+    if (String(payload.sender || '') === phaseAudioInstanceId_) return;
+    const phase = normalizeSoundPhase_(payload.phase);
+    reloadCustomSoundPhaseFromBrowser_(phase).catch(()=>{});
+  }
+
+  function initCustomSoundSync_(){
+    if ('BroadcastChannel' in window && !customSoundSyncChannel_){
+      try{
+        customSoundSyncChannel_ = new BroadcastChannel(CUSTOM_SOUND_SYNC_CHANNEL);
+        customSoundSyncChannel_.addEventListener('message', (event) => {
+          handleCustomSoundSyncEvent_(event && event.data);
+        });
+      }catch(e){
+        customSoundSyncChannel_ = null;
+      }
+    }
+
+    window.addEventListener('storage', (event) => {
+      if (!event || event.key !== CUSTOM_SOUND_SYNC_STORAGE_KEY || !event.newValue) return;
+      try{ handleCustomSoundSyncEvent_(JSON.parse(event.newValue)); }catch(e){}
+    });
+  }
+
+  function broadcastCustomSoundChange_(phase, action){
+    const payload = {
+      sender: phaseAudioInstanceId_,
+      phase: normalizeSoundPhase_(phase),
+      action: String(action || 'set'),
+      ts: Date.now()
+    };
+
+    try{
+      if (customSoundSyncChannel_) customSoundSyncChannel_.postMessage(payload);
+    }catch(e){}
+
+    try{
+      localStorage.setItem(CUSTOM_SOUND_SYNC_STORAGE_KEY, JSON.stringify(payload));
+    }catch(e){}
+  }
+
   function isAcceptedMp3_(file){
     const nameOk = /\.mp3$/i.test(String(file && file.name || ''));
     const type = String(file && file.type || '').toLowerCase();
@@ -3995,10 +3976,35 @@ window.guideSave = async function(){
     return nameOk || typeOk;
   }
 
+  function stopDefaultPhaseSound_(){
+    defaultPhaseSoundRunId_ += 1;
+
+    for (const timer of Array.from(defaultPhaseSoundTimers_)){
+      try{ clearTimeout(timer); }catch(e){}
+      defaultPhaseSoundTimers_.delete(timer);
+    }
+
+    for (const node of Array.from(defaultPhaseSoundNodes_)){
+      try{ node.oscillator.stop(); }catch(e){}
+      try{ node.oscillator.disconnect(); }catch(e){}
+      try{ node.gain.disconnect(); }catch(e){}
+      defaultPhaseSoundNodes_.delete(node);
+    }
+  }
+
   function playDefaultPhaseSound_(phase){
-    // 다른 탭에서 방금 MP3를 설정해 아직 이 탭 메모리에 복원되기 전이어도 기본음은 금지합니다.
-    if (phasePrefersCustomSound_(phase)) return false;
-    const base = (phase === 'work') ? 880 : 660;
+    const soundPhase = normalizeSoundPhase_(phase);
+
+    // 사용자 MP3가 설정된 단계라면 기본음은 시작조차 하지 않습니다.
+    if (hasCustomSound_(soundPhase)) {
+      stopDefaultPhaseSound_();
+      return false;
+    }
+
+    // 한 번의 단계 전환에는 하나의 기본음 시퀀스만 남깁니다.
+    stopDefaultPhaseSound_();
+    const runId = defaultPhaseSoundRunId_;
+    const base = (soundPhase === 'work') ? 880 : 660;
     const seq = [
       [base, 70, 0.16],
       [base, 70, 0.16],
@@ -4006,13 +4012,34 @@ window.guideSave = async function(){
       [base, 70, 0.16],
       [base + 220, 150, 0.18],
     ];
+
     let i = 0;
     const playNext = () => {
+      // 재생 도중 MP3가 생기거나 다른 호출이 시작되면 뒤따를 기본음을 전부 취소합니다.
+      if (runId !== defaultPhaseSoundRunId_ || hasCustomSound_(soundPhase)) {
+        stopDefaultPhaseSound_();
+        return;
+      }
       if (i >= seq.length) return;
+
       const [f, ms, v] = seq[i++];
-      beep(f, ms, v);
-      setTimeout(playNext, ms + 40);
+      const node = beep(f, ms, v);
+      if (node){
+        defaultPhaseSoundNodes_.add(node);
+        node.oscillator.onended = () => {
+          defaultPhaseSoundNodes_.delete(node);
+          try{ node.oscillator.disconnect(); }catch(e){}
+          try{ node.gain.disconnect(); }catch(e){}
+        };
+      }
+
+      const timer = setTimeout(() => {
+        defaultPhaseSoundTimers_.delete(timer);
+        playNext();
+      }, ms + 40);
+      defaultPhaseSoundTimers_.add(timer);
     };
+
     playNext();
     return true;
   }
@@ -4046,17 +4073,16 @@ window.guideSave = async function(){
 
       o.start(t0);
       o.stop(t0 + ms/1000 + 0.02);
-    }catch(e){}
+      return { oscillator:o, gain:g };
+    }catch(e){
+      return null;
+    }
   }
 
   function claimPhaseAlarmToken_(token){
     const safeToken = String(token || '').trim();
     if (!safeToken) return true;
     if (playedPhaseAlarmTokens_.has(safeToken)) return false;
-    try{
-      if (localStorage.getItem(PHASE_LAST_ALARM_TOKEN_KEY) === safeToken) return false;
-      localStorage.setItem(PHASE_LAST_ALARM_TOKEN_KEY, safeToken);
-    }catch(e){}
     playedPhaseAlarmTokens_.add(safeToken);
     // 하루 48개 토큰만 생기지만 장시간 실행을 고려해 오래된 항목은 작게 유지합니다.
     while (playedPhaseAlarmTokens_.size > 100) {
@@ -4064,16 +4090,6 @@ window.guideSave = async function(){
       playedPhaseAlarmTokens_.delete(oldest);
     }
     return true;
-  }
-
-  async function withPhaseAudioLock_(task){
-    if (navigator.locks && typeof navigator.locks.request === 'function') {
-      return navigator.locks.request(PHASE_AUDIO_LOCK_NAME, { mode:'exclusive', ifAvailable:true }, (lock) => {
-        if (!lock) return false;
-        return task();
-      });
-    }
-    return task();
   }
 
   function readPhaseAudioLeader_(){
@@ -4104,17 +4120,23 @@ window.guideSave = async function(){
     }
   }
 
-  function claimPhaseAudioLeadership_(){
+  async function claimPhaseAudioLeadership_(){
     const now = Date.now();
     try{
       const current = readPhaseAudioLeader_();
       if (current && current.id !== phaseAudioInstanceId_ && current.expiresAt > now) return false;
+
+      // localStorage 잠금은 원자적이지 않습니다. 후보 기록 후 잠깐 양보하고
+      // 최종 기록의 승자 한 창만 알림을 재생하게 해 동시 경계 감지 경쟁을 막습니다.
       localStorage.setItem(PHASE_AUDIO_LEADER_KEY, JSON.stringify({
         id: phaseAudioInstanceId_,
         expiresAt: now + PHASE_AUDIO_LEASE_MS
       }));
+
+      await new Promise((resolve) => setTimeout(resolve, 70 + Math.floor(Math.random() * 50)));
+
       const confirmed = readPhaseAudioLeader_();
-      if (!confirmed || confirmed.id !== phaseAudioInstanceId_) return false;
+      if (!confirmed || confirmed.id !== phaseAudioInstanceId_ || confirmed.expiresAt <= Date.now()) return false;
       if (!phaseAudioLeaderRenewTimer_){
         phaseAudioLeaderRenewTimer_ = setInterval(renewPhaseAudioLeadership_, 5000);
       }
@@ -4135,67 +4157,35 @@ window.guideSave = async function(){
     }catch(e){}
   }
 
-  // ✅ 같은 브라우저의 설치된 PWA와 일반 탭이 storage를 공유하지 않는 경우를 대비한
-  // 서버(Firebase) 기반 2차 조율. 같은 경계(token)를 두 창이 동시에 잡으면,
-  // 나중에 재확인했을 때 이 창의 id가 아니면 알림을 양보합니다.
-  async function claimPhaseAudioLeadershipRemote_(token){
-    try{
-      if (!window.FB || !window.FB.db || !token) return true;
-      await window.FB.ensureAnonAuth();
-      const path = `${PHASE_AUDIO_FB_PATH_}/${phaseAudioDeviceFingerprint_()}`;
-      const r = window.FB.ref(window.FB.db, path);
-      const now = Date.now();
-      const snap = await window.FB.get(r);
-      const cur = snap && snap.exists() ? snap.val() : null;
-      if (cur && cur.token === token && cur.id !== phaseAudioInstanceId_ && cur.expiresAt > now) {
-        return false;
-      }
-      await window.FB.set(r, { id: phaseAudioInstanceId_, token, expiresAt: now + PHASE_AUDIO_LEASE_MS });
-      await new Promise((resolve) => setTimeout(resolve, 250));
-      const confirmSnap = await window.FB.get(r);
-      const confirmed = confirmSnap && confirmSnap.exists() ? confirmSnap.val() : null;
-      return !!(confirmed && confirmed.id === phaseAudioInstanceId_ && confirmed.token === token);
-    }catch(e){
-      // 원격 확인이 실패해도 알림 자체가 사라지지 않도록 로컬 판단을 그대로 따릅니다.
-      return true;
-    }
-  }
-
   async function playPhaseSound(phase, alarmToken){
     if (!soundEnabled || !userGestured) return;
-    return withPhaseAudioLock_(async() => {
-      // 같은 GitHub 앱을 일반 탭/PWA 등으로 여러 번 열어도 한 창만 전환음을 담당합니다.
-      if (!claimPhaseAudioLeadership_()) return false;
-      if (!claimPhaseAlarmToken_(alarmToken)) return false;
-      if (!(await claimPhaseAudioLeadershipRemote_(alarmToken))) return false;
-      const soundPhase = normalizeSoundPhase_(phase);
-      await ensureCustomSoundsLoaded_();
+    // 같은 GitHub 앱을 일반 탭/PWA 등으로 여러 번 열어도 한 창만 전환음을 담당합니다.
+    if (!(await claimPhaseAudioLeadership_())) return;
+    if (!claimPhaseAlarmToken_(alarmToken)) return;
+    const soundPhase = normalizeSoundPhase_(phase);
+    await ensureCustomSoundsLoaded_();
+    // 실제 사용자 제스처로 한 번 잠금 해제된 뒤에만 자동 알림을 재생합니다.
+    await ensureAudio_();
+    await startAudioKeepAlive_();
 
-      // 다른 탭에서 MP3를 새로 저장한 직후라면 현재 탭도 IndexedDB에서 즉시 다시 읽습니다.
-      if (phasePrefersCustomSound_(soundPhase) && !hasCustomSound_(soundPhase)) {
-        await refreshCustomSoundPhaseFromBrowser_(soundPhase);
+    // 작업 시작과 휴식 시작은 각자 저장한 MP3를 우선 재생합니다.
+    // 백그라운드 복귀 직후의 일시적인 오디오 잠금은 한 번 복구한 뒤 재시도합니다.
+    if (hasCustomSound_(soundPhase)) {
+      stopDefaultPhaseSound_();
+      let played = await playCustomSound_(soundPhase).catch(()=>false);
+      if (!played) {
+        await new Promise((resolve) => setTimeout(resolve, 140));
+        await ensureAudio_();
+        await primeOneCustomSound_(soundPhase).catch(()=>false);
+        played = await playCustomSound_(soundPhase).catch(()=>false);
       }
+      // 사용자 MP3를 선택한 단계에서는 재생 실패 시에도 기본음으로 대체하지 않습니다.
+      // 다음 전환까지 설정한 소리만 사용한다는 사용자의 선택을 보존합니다.
+      return;
+    }
 
-      // 실제 사용자 제스처로 한 번 잠금 해제된 뒤에만 자동 알림을 재생합니다.
-      await ensureAudio_();
-      await startAudioKeepAlive_();
-
-      // 사용자 MP3가 설정된 단계는 성공 여부와 관계없이 기본음 경로로 내려가지 않습니다.
-      if (phasePrefersCustomSound_(soundPhase)) {
-        if (hasCustomSound_(soundPhase)) {
-          let played = await playCustomSound_(soundPhase).catch(()=>false);
-          if (!played) {
-            await new Promise((resolve) => setTimeout(resolve, 140));
-            await ensureAudio_();
-            await primeOneCustomSound_(soundPhase).catch(()=>false);
-            played = await playCustomSound_(soundPhase).catch(()=>false);
-          }
-        }
-        return true;
-      }
-
-      return playDefaultPhaseSound_(soundPhase);
-    });
+    stopCustomSound_(soundPhase);
+    playDefaultPhaseSound_(soundPhase);
   }
 
   function playClickSound(kind){
@@ -4572,8 +4562,8 @@ window.guideSave = async function(){
       await customSoundDbDelete_(CUSTOM_SOUND_KEYS[normalized]);
       customSoundStorageAvailable = true;
       clearCustomSoundRuntime_(normalized);
-      publishCustomSoundPresence_(normalized, false);
       updateCustomSoundUI_(normalized);
+      broadcastCustomSoundChange_(normalized, 'reset');
     }catch(err){
       showOverlay('기본음으로 바꾸지 못했어', '브라우저 저장소에서 파일을 지우지 못했어. 브라우저를 다시 연 뒤 한 번 더 시도해줘!');
     }
@@ -4637,8 +4627,8 @@ window.guideSave = async function(){
     customSoundStorageAvailable = true;
     applyCustomSoundRecord_(phase, record);
     getCustomSoundSlot_(phase).buffer = decodedBuffer;
-    publishCustomSoundPresence_(phase, true);
     updateCustomSoundUI_(phase);
+    broadcastCustomSoundChange_(phase, 'set');
     showOverlay(`${soundPhaseLabel_(phase)} 알림음 설정 완료 🎵`, `“${record.name}” 파일을 이 브라우저에만 저장했어.
 미리 듣기 버튼으로 바로 확인할 수 있고, 다음 ${soundPhaseLabel_(phase)}부터 이 소리가 울려!`);
   });
@@ -4769,7 +4759,11 @@ window.guideSave = async function(){
     }catch(e){}
   }
 
-  window.addEventListener('pagehide', releasePhaseAudioLeadership_);
+  window.addEventListener('pagehide', ()=>{
+    releasePhaseAudioLeadership_();
+    try{ if (customSoundSyncChannel_) customSoundSyncChannel_.close(); }catch(e){}
+    customSoundSyncChannel_ = null;
+  });
 
   document.addEventListener('visibilitychange', ()=>{
     if (!document.hidden && userGestured && soundEnabled){
@@ -4821,8 +4815,8 @@ window.guideSave = async function(){
     initLogSizer();
     initNewMessagesButton_();
     updateNoticeButton_();
-    // 다른 탭/PWA에서 알림음을 바꿔도 현재 화면에 즉시 동기화
-    setupCustomSoundSync_();
+    // 일반 탭과 설치형 PWA가 동시에 열려 있어도 알림음 설정을 즉시 공유합니다.
+    initCustomSoundSync_();
     // Firebase/시트와 무관한 브라우저 로컬 MP3만 조용히 복원
     ensureCustomSoundsLoaded_();
     const savedRecordMode = localStorage.getItem(RECORD_MODE_STORAGE_KEY) || 'chat';
