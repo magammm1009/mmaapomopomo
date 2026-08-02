@@ -1,7 +1,7 @@
 // 마끝마 뽀모 PWA Service Worker
-// v4.4.14 — 지연 응답 시계 보정 제거·단방향 전환 알림
+// v4.4.15 — 사용자 MP3 상태 동기화·단일 알림
 
-const CACHE_NAME = 'pomo-github-standalone-v4-4-14-20260802-timer-transition-v1';
+const CACHE_NAME = 'pomo-github-standalone-v4-4-15-20260802-single-sound-v1';
 const STATIC_ASSETS = [
   './offline.html',
   './manifest.webmanifest',
