@@ -1,7 +1,7 @@
 // 마끝마 뽀모 PWA Service Worker
-// v4.4.11 — GitHub 단일 알림 주체·다중 창 차단
+// v4.4.14 — 지연 응답 시계 보정 제거·단방향 전환 알림
 
-const CACHE_NAME = 'pomo-github-standalone-v4-4-11-20260802-audio-owner-v1';
+const CACHE_NAME = 'pomo-github-standalone-v4-4-14-20260802-timer-transition-v1';
 const STATIC_ASSETS = [
   './offline.html',
   './manifest.webmanifest',

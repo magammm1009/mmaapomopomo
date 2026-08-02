@@ -1,5 +1,5 @@
 <!doctype html>
-<!-- POMO GitHub standalone v4.4.11 / 2026-08-02 / GitHub 단일 알림 주체·다중 창 차단 -->
+<!-- POMO GitHub standalone v4.4.14 / 2026-08-02 / 지연 응답 시계 보정 제거·단방향 전환 알림 -->
 <html>
 <head>
   <meta charset="utf-8"/>
@@ -10,11 +10,11 @@
   <link rel="manifest" href="./manifest.webmanifest" />
   <link rel="icon" href="./icons/icon-192.png" />
   <link rel="apple-touch-icon" href="./icons/icon-192.png" />
-  <script src="./config.js?v=20260802-audio-owner-v4-4-11"></script>
+  <script src="./config.js?v=20260802-timer-transition-v4-4-14"></script>
   <script>
   (function(){
     'use strict';
-    const VERSION = 'github-standalone-v4.4.11-audio-owner-20260802';
+    const VERSION = 'github-standalone-v4.4.14-timer-transition-20260802';
     const cfg = window.POMO_APP_CONFIG || {};
     const endpoint = String(cfg.POMO_APP_URL || '').trim();
     const isMissing = !endpoint || endpoint.includes('여기에_Apps_Script') || endpoint.includes('YOUR_');
@@ -1266,8 +1266,11 @@
   let lastAnchorSeq = 0;
 
   let localRemaining = 25 * 60;
+  // 24시간 자동 타이머는 기기의 epoch 시각만 사용합니다.
+  // Apps Script의 serverNowMs에는 네트워크 왕복 지연이 섞이므로 시계 보정에 사용하지 않습니다.
   let serverClockOffsetMs = 0;
   let lastAutoToken = '';
+  let lastAutoAlarmSeq_ = null;
   let lastAutoDayKey = '';
   let midnightRefreshDay = '';
 
@@ -2749,7 +2752,7 @@ window.guideSave = async function(){
   // 뽀모 상태 수신/렌더
   // =====================
   function computeAutoPomState_(browserNowMs){
-    const nowMs = Number(browserNowMs || Date.now()) + serverClockOffsetMs;
+    const nowMs = Number(browserNowMs || Date.now());
     const kstMs = nowMs + KST_OFFSET_MS;
     const msInDay = ((kstMs % 86400000) + 86400000) % 86400000;
     const secInDay = Math.floor(msInDay / 1000);
@@ -2770,11 +2773,26 @@ window.guideSave = async function(){
     };
   }
 
+  function shouldPlayAutoPhaseAlarm_(nextSeq, silent){
+    const seq = Number(nextSeq);
+    if (!Number.isFinite(seq)) return false;
+    if (lastAutoAlarmSeq_ == null) {
+      lastAutoAlarmSeq_ = seq;
+      return false;
+    }
+    if (seq <= lastAutoAlarmSeq_) return false;
+    const advancedExactlyOne = seq === lastAutoAlarmSeq_ + 1;
+    lastAutoAlarmSeq_ = seq;
+    return !silent && advancedExactlyOne;
+  }
+
   function renderAutoPom_(options){
     const opts = options || {};
     const state = computeAutoPomState_(Date.now());
     const token = `${state.dayKey}|${state.seq}`;
-    if (!opts.silent && lastAutoToken && token !== lastAutoToken) playPhaseSound(state.phase, token);
+    // 알림 순번은 단방향으로만 진행합니다. 느린 응답·절전 복귀·시계 흔들림으로
+    // 이전 단계로 되돌아갔다가 다시 오는 경우에는 같은 경계를 재생하지 않습니다.
+    if (shouldPlayAutoPhaseAlarm_(state.seq, !!opts.silent)) playPhaseSound(state.phase, token);
     lastAutoToken = token;
     lastPomSeq = state.seq;
     lastPhase = state.phase;
@@ -2801,10 +2819,8 @@ window.guideSave = async function(){
   }
 
   function onPomState(res, options){
-    if (res && Number.isFinite(Number(res.serverNowMs))) {
-      const observedOffset = Number(res.serverNowMs) - Date.now();
-      if (Math.abs(observedOffset) > 5000) serverClockOffsetMs = observedOffset;
-    }
+    // serverNowMs는 서버가 값을 만든 시각이며 브라우저가 받은 시각이 아닙니다.
+    // 느린 응답 시간을 시계 오차로 오인하지 않도록 표시·알림 계산에서 제외합니다.
     return renderAutoPom_(options);
   }
 
