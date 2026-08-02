@@ -5068,6 +5068,37 @@ window.guideSave = async function(){
   // 메뉴가 늦게 그려지는 예외 상황까지 방어
   setTimeout(bindInstallButton, 300);
   setTimeout(bindInstallButton, 1200);
+
+  // ===== DEBUG INSTRUMENTATION (temporary, for local diagnosis only) =====
+  window.__DBG_LOG = [];
+  function __dbg(name, extra){
+    const rec = { t: Date.now(), name, extra: extra };
+    window.__DBG_LOG.push(rec);
+    console.log('[DBG]', name, extra || '');
+  }
+  const __orig_beep = beep;
+  beep = function(...args){ __dbg('beep', args); return __orig_beep.apply(this, args); };
+  const __orig_playDefaultPhaseSound_ = playDefaultPhaseSound_;
+  playDefaultPhaseSound_ = function(...args){ __dbg('playDefaultPhaseSound_', args); return __orig_playDefaultPhaseSound_.apply(this, args); };
+  const __orig_playCustomSound_ = playCustomSound_;
+  playCustomSound_ = function(...args){ __dbg('playCustomSound_', args); return __orig_playCustomSound_.apply(this, args); };
+  const __orig_playPhaseSound = playPhaseSound;
+  playPhaseSound = function(...args){ __dbg('playPhaseSound', args); return __orig_playPhaseSound.apply(this, args); };
+  const __orig_shouldPlayAutoPhaseAlarm_ = shouldPlayAutoPhaseAlarm_;
+  shouldPlayAutoPhaseAlarm_ = function(...args){ const r = __orig_shouldPlayAutoPhaseAlarm_.apply(this, args); __dbg('shouldPlayAutoPhaseAlarm_', { args, result: r }); return r; };
+  const __orig_phasePrefersCustomSound_ = phasePrefersCustomSound_;
+  phasePrefersCustomSound_ = function(...args){ const r = __orig_phasePrefersCustomSound_.apply(this, args); __dbg('phasePrefersCustomSound_', { args, result: r }); return r; };
+  const __orig_hasCustomSound_ = hasCustomSound_;
+  hasCustomSound_ = function(...args){ const r = __orig_hasCustomSound_.apply(this, args); __dbg('hasCustomSound_', { args, result: r }); return r; };
+  const __orig_refreshCustomSoundPhaseFromBrowser_ = refreshCustomSoundPhaseFromBrowser_;
+  refreshCustomSoundPhaseFromBrowser_ = function(...args){ __dbg('refreshCustomSoundPhaseFromBrowser_', args); return __orig_refreshCustomSoundPhaseFromBrowser_.apply(this, args); };
+  const __orig_claimPhaseAudioLeadership_ = claimPhaseAudioLeadership_;
+  claimPhaseAudioLeadership_ = function(...args){ const r = __orig_claimPhaseAudioLeadership_.apply(this, args); __dbg('claimPhaseAudioLeadership_', { result: r }); return r; };
+  const __orig_claimPhaseAlarmToken_ = claimPhaseAlarmToken_;
+  claimPhaseAlarmToken_ = function(...args){ const r = __orig_claimPhaseAlarmToken_.apply(this, args); __dbg('claimPhaseAlarmToken_', { args, result: r }); return r; };
+
+  window.__DBG_STATE = () => ({ soundEnabled, userGestured, lastAutoAlarmSeq_, isStopped, hasWork: hasCustomSound_('work'), hasBreak: hasCustomSound_('break') });
+  console.log('[DBG] instrumentation ready v4.4.15 (read-only logging, no behavior change)');
 })();
 </script>
 
