@@ -1,5 +1,5 @@
 <!doctype html>
-<!-- POMO GitHub standalone v4.4.9 / 2026-08-02 / 접속자 스냅샷 안정화 -->
+<!-- POMO GitHub standalone v4.4.10 / 2026-08-02 / 사용자 알림음 단일 재생·기본음 차단 -->
 <html>
 <head>
   <meta charset="utf-8"/>
@@ -10,11 +10,11 @@
   <link rel="manifest" href="./manifest.webmanifest" />
   <link rel="icon" href="./icons/icon-192.png" />
   <link rel="apple-touch-icon" href="./icons/icon-192.png" />
-  <script src="./config.js?v=20260802-presence-stable-v4-4-9"></script>
+  <script src="./config.js?v=20260802-custom-sound-single-v4-4-10"></script>
   <script>
   (function(){
     'use strict';
-    const VERSION = 'github-standalone-v4.4.9-presence-stable-20260802';
+    const VERSION = 'github-standalone-v4.4.10-custom-sound-single-20260802';
     const cfg = window.POMO_APP_CONFIG || {};
     const endpoint = String(cfg.POMO_APP_URL || '').trim();
     const isMissing = !endpoint || endpoint.includes('여기에_Apps_Script') || endpoint.includes('YOUR_');
@@ -1327,6 +1327,7 @@
   let userGestured = false;
   let lastPomSeq = 0;
   let lastPhase = null;
+  const playedPhaseAlarmTokens_ = new Set();
   let audioCtx = null;
   let keepAliveOsc = null;
   let keepAliveGain = null;
@@ -2769,7 +2770,7 @@ window.guideSave = async function(){
     const opts = options || {};
     const state = computeAutoPomState_(Date.now());
     const token = `${state.dayKey}|${state.seq}`;
-    if (!opts.silent && lastAutoToken && token !== lastAutoToken) playPhaseSound(state.phase);
+    if (!opts.silent && lastAutoToken && token !== lastAutoToken) playPhaseSound(state.phase, token);
     lastAutoToken = token;
     lastPomSeq = state.seq;
     lastPhase = state.phase;
@@ -3884,6 +3885,8 @@ window.guideSave = async function(){
   }
 
   function playDefaultPhaseSound_(phase){
+    // 이 단계에 사용자 MP3가 있으면 어떤 지연 호출도 기본음으로 바뀌지 못하게 합니다.
+    if (hasCustomSound_(normalizeSoundPhase_(phase))) return false;
     const base = (phase === 'work') ? 880 : 660;
     const seq = [
       [base, 70, 0.16],
@@ -3900,6 +3903,7 @@ window.guideSave = async function(){
       setTimeout(playNext, ms + 40);
     };
     playNext();
+    return true;
   }
 
   function beep(freq=880, ms=120, vol=0.15){
@@ -3934,7 +3938,21 @@ window.guideSave = async function(){
     }catch(e){}
   }
 
-  async function playPhaseSound(phase){
+  function claimPhaseAlarmToken_(token){
+    const safeToken = String(token || '').trim();
+    if (!safeToken) return true;
+    if (playedPhaseAlarmTokens_.has(safeToken)) return false;
+    playedPhaseAlarmTokens_.add(safeToken);
+    // 하루 48개 토큰만 생기지만 장시간 실행을 고려해 오래된 항목은 작게 유지합니다.
+    while (playedPhaseAlarmTokens_.size > 100) {
+      const oldest = playedPhaseAlarmTokens_.values().next().value;
+      playedPhaseAlarmTokens_.delete(oldest);
+    }
+    return true;
+  }
+
+  async function playPhaseSound(phase, alarmToken){
+    if (!claimPhaseAlarmToken_(alarmToken)) return;
     const soundPhase = normalizeSoundPhase_(phase);
     await ensureCustomSoundsLoaded_();
     // 실제 사용자 제스처로 한 번 잠금 해제된 뒤에만 자동 알림을 재생합니다.
@@ -3951,7 +3969,8 @@ window.guideSave = async function(){
         await primeOneCustomSound_(soundPhase).catch(()=>false);
         played = await playCustomSound_(soundPhase).catch(()=>false);
       }
-      if (!played) playDefaultPhaseSound_(soundPhase);
+      // 사용자 MP3를 선택한 단계에서는 재생 실패 시에도 기본음으로 대체하지 않습니다.
+      // 다음 전환까지 설정한 소리만 사용한다는 사용자의 선택을 보존합니다.
       return;
     }
 
