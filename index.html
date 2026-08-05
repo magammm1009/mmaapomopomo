@@ -1,5 +1,5 @@
 <!doctype html>
-<!-- POMO GitHub standalone v4.4.15 / 2026-08-02 / 지연 응답 시계 보정 제거·단방향 전환 알림 -->
+<!-- POMO GitHub standalone v4.5.0 / 2026-08-06 / 글자수 기록 파이프라인 Firebase RTDB 전환 -->
 <html>
 <head>
   <meta charset="utf-8"/>
@@ -11,10 +11,14 @@
   <link rel="icon" href="./icons/icon-192.png" />
   <link rel="apple-touch-icon" href="./icons/icon-192.png" />
   <script src="./config.js?v=20260802-timer-transition-v4-4-14"></script>
+  <!-- ✅ v4.5.0: 글자수 기록 엔진(순수 로직) + RTDB 어댑터. 기록만 Firebase로 처리하고
+       접속자/세션 관련 호출은 기존 Apps Script 경로를 그대로 사용합니다. -->
+  <script src="./pomo-record-engine.js?v=20260806-rtdb-records-v4-5-0"></script>
+  <script src="./pomo-rtdb-records.js?v=20260806-rtdb-records-v4-5-0"></script>
   <script>
   (function(){
     'use strict';
-    const VERSION = 'github-standalone-v4.4.15-exclusive-audio-20260802';
+    const VERSION = 'github-standalone-v4.5.0-rtdb-records-20260806';
     const cfg = window.POMO_APP_CONFIG || {};
     const endpoint = String(cfg.POMO_APP_URL || '').trim();
     const isMissing = !endpoint || endpoint.includes('여기에_Apps_Script') || endpoint.includes('YOUR_');
@@ -1209,7 +1213,8 @@
   import { getAuth, signInAnonymously, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.0.1/firebase-auth.js";
   import {
     getDatabase, ref, push, set, update, remove, get,
-    query, limitToLast, onChildAdded, onChildChanged, onValue, off, onDisconnect
+    query, limitToLast, onChildAdded, onChildChanged, onValue, off, onDisconnect,
+    runTransaction, serverTimestamp
   } from "https://www.gstatic.com/firebasejs/11.0.1/firebase-database.js";
 
   const firebaseConfig = {
@@ -1234,7 +1239,8 @@
   // module 밖에서 쓰기 위해 window로 노출
   window.FB = {
     app, auth, db, ensureAnonAuth, onAuthStateChanged,
-    ref, push, set, update, remove, get, query, limitToLast, onChildAdded, onChildChanged, onValue, off, onDisconnect
+    ref, push, set, update, remove, get, query, limitToLast, onChildAdded, onChildChanged, onValue, off, onDisconnect,
+    runTransaction, serverTimestamp
   };
 </script>
 
@@ -2557,8 +2563,9 @@ window.guideSave = async function(){
 
     // 숫자만 → 스냅샷(현재 글자수)
     if (/^\d{1,12}$/.test(s)) return true;
-    // 이름+숫자 (예: 리로12000)도 스냅샷
-    if (/^[^\d:+\-]{1,20}\d{1,12}$/.test(s)) return true;
+    // ⚠️ v4.5.0: '이름+맨숫자'(예: 리로12000)는 일반 채팅이 기록으로 오인되는 문제로 제외했습니다.
+    //    닉네임 프리픽스는 '리로 시작 1234', '리로: +300', '이름: /2 3000'처럼
+    //    명시적 명령 표식이 뒤따를 때만 인정합니다. (pomo-record-engine.js와 동일 규칙)
     // 델타 (예: +300, -200) / 이름:+300
     if (/^[+\-]\d{1,12}$/.test(s)) return true;
     if (/^[^\d:+\-]{1,20}\s*:\s*[+\-]\d{1,12}$/.test(s)) return true;
@@ -2651,7 +2658,9 @@ window.guideSave = async function(){
 
   function enqueueCommand_(sid, user, msg, requestId, messageKey, dayKey){
     if (!requestId || cmdQueue_.some(j => j.requestId === requestId)) return;
-    cmdQueue_.push({ sid, user, msg, requestId, messageKey, dayKey:String(dayKey || currentRecordDayKey_()), tries: 0, notified: false, backoff: 1200, createdAtMs: Date.now() });
+    // v4.5.0: 기록은 RTDB에서 처리하므로 Apps Script 세션 발급을 기다리지 않습니다.
+    const jobSid = String(sid || '').trim() || 'rtdb';
+    cmdQueue_.push({ sid: jobSid, user, msg, requestId, messageKey, dayKey:String(dayKey || currentRecordDayKey_()), tries: 0, notified: false, backoff: 1200, createdAtMs: Date.now() });
     persistCommandQueue_();
     if (!cmdWorking_) processCmdQueue_();
   }
@@ -2670,7 +2679,10 @@ window.guideSave = async function(){
 
     while (cmdQueue_.length){
       const job = cmdQueue_[0];
-      if (!job.sid) { finishCommandJob_(); continue; }
+      // v4.5.0: RTDB가 기록을 처리하면 세션 개념(SESSION_CHANGED)이 없으므로
+      // 세션 관련 드롭 조건을 건너뜁니다. 날짜 가드는 그대로 유지합니다.
+      const localRecords = recordsHandledLocally_('processCommandOnly');
+      if (!job.sid && !localRecords) { finishCommandJob_(); continue; }
 
       if (!job.dayKey || job.dayKey !== currentRecordDayKey_()) {
         try{ await fbSend_('SYSTEM', '⚠️ 날짜가 바뀌어 이전 날짜의 미처리 기록은 반영하지 않았어요.', 'system', `${job.messageKey}_result`); }catch(e){}
@@ -2678,7 +2690,7 @@ window.guideSave = async function(){
         finishCommandJob_();
         continue;
       }
-      if (sessionId && job.sid !== sessionId) {
+      if (!localRecords && sessionId && job.sid !== sessionId) {
         try{ await fbSend_('SYSTEM', '⚠️ 앱 연결 정보가 바뀌어 이 기록은 반영하지 않았어요. 해당 값만 다시 입력해 주세요.', 'system', `${job.messageKey}_result`); }catch(e){}
         setRecordQueueStatus_('앱 연결 정보가 바뀌어 미처리 기록을 반영하지 않았어요. 해당 값만 다시 입력해 주세요.', 'error', 4500);
         finishCommandJob_();
@@ -2837,7 +2849,19 @@ window.guideSave = async function(){
     renderAutoPom_();
   }
 
+  // v4.5.0: 글자수 기록 3종은 Apps Script 대신 Firebase RTDB 어댑터가 처리합니다.
+  function recordsHandledLocally_(fnName){
+    try{
+      return !!(window.POMO_RTDB_RECORDS &&
+                typeof window.POMO_RTDB_RECORDS.handles === 'function' &&
+                window.POMO_RTDB_RECORDS.handles(fnName));
+    }catch(e){ return false; }
+  }
+
   function gasCallPromise_(fnName, args, timeoutMs){
+    if (recordsHandledLocally_(fnName)) {
+      return window.POMO_RTDB_RECORDS.call(fnName, args || []);
+    }
     if (typeof window.POMO_GAS_CALL === 'function') {
       return window.POMO_GAS_CALL(fnName, args || [], timeoutMs || 12000);
     }
@@ -3182,7 +3206,8 @@ window.guideSave = async function(){
   async function loadDirectSheet_(options){
     const opts = options || {};
     if (directSheetLoading_) return;
-    const allowWithoutSession = opts.allowWithoutSession === true;
+    // v4.5.0: RTDB 어댑터가 오늘 상태를 직접 읽으므로 세션 발급을 기다리지 않습니다.
+    const allowWithoutSession = opts.allowWithoutSession === true || recordsHandledLocally_('getDirectSheetState');
     if (!sessionId && !allowWithoutSession) {
       if (!opts.silent) directSetStatus_('서버 연결을 준비하고 있어요. 잠시 후 자동으로 불러옵니다.');
       return;
@@ -3311,7 +3336,8 @@ window.guideSave = async function(){
           finishDirectJob_();
           continue;
         }
-        if (sessionId && job.sid !== sessionId) {
+        // v4.5.0: RTDB 처리에는 세션 개념이 없으므로 세션 불일치 드롭을 건너뜁니다.
+        if (!recordsHandledLocally_('saveDirectSheetEntry') && sessionId && job.sid !== sessionId) {
           directSetStatus_('날짜가 바뀌어 이전 날짜의 미처리 시트 입력은 자동 반영하지 않았어요. 값을 다시 확인해 주세요.', 'error');
           rollbackDirectOptimistic_(job);
           finishDirectJob_();
@@ -3375,7 +3401,9 @@ window.guideSave = async function(){
   }
 
   function handleDirectSave_(button){
-    if (!button || !sessionId) return;
+    if (!button) return;
+    // v4.5.0: RTDB 어댑터가 있으면 세션 발급 전에도 바로 저장할 수 있습니다.
+    if (!sessionId && !recordsHandledLocally_('saveDirectSheetEntry')) return;
     const card = button.closest('.sheetBlock');
     if (!card) return;
     const kind = String(button.dataset.kind || '');
@@ -3389,7 +3417,7 @@ window.guideSave = async function(){
       ? directSheetState_.blocks.find((block)=>Number(block.index) === index)
       : null;
     const job = {
-      sid:sessionId,
+      sid:String(sessionId || '').trim() || 'rtdb',
       name,
       index,
       kind,

@@ -1,7 +1,7 @@
 // 마끝마 뽀모 PWA Service Worker
-// v4.4.15 — 지연 응답 시계 보정 제거·단방향 전환 알림
+// v4.5.0 — 글자수 기록 파이프라인 Firebase RTDB 전환
 
-const CACHE_NAME = 'pomo-github-standalone-v4-4-15-20260802-exclusive-audio-v1';
+const CACHE_NAME = 'pomo-github-standalone-v4-5-0-20260806-rtdb-records-v1';
 const STATIC_ASSETS = [
   './offline.html',
   './manifest.webmanifest',
