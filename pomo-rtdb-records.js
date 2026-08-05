@@ -169,6 +169,28 @@
     } catch (e) { /* 감사로그 실패가 사용자 응답을 막지 않게 한다 */ }
   }
 
+  /**
+   * 같은 사람의 다른 작품 슬롯 오늘 합계.
+   * 문구의 "오늘 누적"을 하루 전체 합산으로 보여주기 위한 표시용 값이며
+   * (2026-08-06 사용자 요청 — 먼슬리 합산과 같은 기준), 상태 계산에는 쓰지 않는다.
+   * 병합 기준은 먼슬리와 동일하게 displayBaseName(" /n" 접미사 제거).
+   */
+  function otherSlotsTotalOf(C, all, targetKey, targetName) {
+    var base = C.normalizeName(C.displayBaseName(targetName));
+    if (!base) return 0;
+    var data = all || {};
+    var sum = 0;
+    for (var k in data) {
+      if (!Object.prototype.hasOwnProperty.call(data, k)) continue;
+      if (k === targetKey) continue;
+      var v = data[k] || {};
+      var nm = String(v.name != null ? v.name : k);
+      if (C.normalizeName(C.displayBaseName(nm)) !== base) continue;
+      sum += Number(v.total) || 0;
+    }
+    return sum;
+  }
+
   /* ---------- 채팅 기록 명령 (원문 processCommandOnly) ---------- */
 
   function processCommandOnly(sid, rawUser, rawMsg, rawRequestId, rawDayKey) {
@@ -205,48 +227,53 @@
         var r0 = C.applyChatCommand(null, parsed, user);
         return { ok: true, hadCommand: true, ts: ts, sysText: r0.sysText, requestId: requestId };
       }
-      if (parsed.kind === 'baselineQuery') {
-        return getVal(fb, statePath(day, key)).then(function (cur0) {
-          var r1 = C.applyChatCommand(cur0, parsed, user);
-          return { ok: true, hadCommand: true, ts: ts, sysText: r1.sysText, requestId: requestId };
-        });
-      }
+      // 오늘 상태를 1회 읽어 같은 사람의 다른 작품 슬롯 합계를 구한다.
+      // 문구의 "오늘 누적"만 하루 전체 합산으로 보여주기 위한 값이다(계산에는 무영향).
+      return getVal(fb, dayStatePath(day)).then(function (allToday) {
+        var ctx = { otherSlotsTotal: otherSlotsTotalOf(C, allToday, key, name) };
 
-      var run = null;
-      return runStateTx(fb, day, key, function (cur) {
-        // 큐 재시도로 같은 requestId가 다시 와도 상태를 두 번 바꾸지 않는다.
-        if (requestId && cur && String(cur.lastRequestId || '') === requestId) {
-          run = { dup: true, state: cur };
-          return cur;
+        if (parsed.kind === 'baselineQuery') {
+          var cur0 = (allToday || {})[key] || null;
+          var r1 = C.applyChatCommand(cur0, parsed, user, ctx);
+          return { ok: true, hadCommand: true, ts: ts, sysText: r1.sysText, requestId: requestId };
         }
-        var r = C.applyChatCommand(cur, parsed, user);
-        // 안전망: 위에서 못 거른 비기록 명령이 있어도 상태는 건드리지 않는다.
-        if (!r.recorded) { run = { readOnly: true, sysText: r.sysText }; return undefined; }
-        var st = sanitize(r.state);
-        st.lastRequestId = requestId;
-        st.lastSysText = String(r.sysText || '');
-        st.lastTs = ts;
-        run = { events: r.events, state: st };
-        return st;
-      }).then(function (tx) {
-        if (run && run.readOnly) {
-          return { ok: true, hadCommand: true, ts: ts, sysText: run.sysText, requestId: requestId };
-        }
-        var state = tx.value || (run && run.state) || null;
-        if (run && run.dup) {
+
+        var run = null;
+        return runStateTx(fb, day, key, function (cur) {
+          // 큐 재시도로 같은 requestId가 다시 와도 상태를 두 번 바꾸지 않는다.
+          if (requestId && cur && String(cur.lastRequestId || '') === requestId) {
+            run = { dup: true, state: cur };
+            return cur;
+          }
+          var r = C.applyChatCommand(cur, parsed, user, ctx);
+          // 안전망: 위에서 못 거른 비기록 명령이 있어도 상태는 건드리지 않는다.
+          if (!r.recorded) { run = { readOnly: true, sysText: r.sysText }; return undefined; }
+          var st = sanitize(r.state);
+          st.lastRequestId = requestId;
+          st.lastSysText = String(r.sysText || '');
+          st.lastTs = ts;
+          run = { events: r.events, state: st };
+          return st;
+        }).then(function (tx) {
+          if (run && run.readOnly) {
+            return { ok: true, hadCommand: true, ts: ts, sysText: run.sysText, requestId: requestId };
+          }
+          var state = tx.value || (run && run.state) || null;
+          if (run && run.dup) {
+            return {
+              ok: true, hadCommand: true,
+              ts: String((state && state.lastTs) || ts),
+              sysText: String((state && state.lastSysText) || ''),
+              requestId: requestId, duplicate: true
+            };
+          }
+          syncAfterCommit(fb, day, key, state, run && run.events, user);
           return {
-            ok: true, hadCommand: true,
-            ts: String((state && state.lastTs) || ts),
-            sysText: String((state && state.lastSysText) || ''),
-            requestId: requestId, duplicate: true
+            ok: true, hadCommand: true, ts: ts,
+            sysText: String((state && state.lastSysText) || (run && run.state && run.state.lastSysText) || ''),
+            requestId: requestId
           };
-        }
-        syncAfterCommit(fb, day, key, state, run && run.events, user);
-        return {
-          ok: true, hadCommand: true, ts: ts,
-          sysText: String((state && state.lastSysText) || (run && run.state && run.state.lastSysText) || ''),
-          requestId: requestId
-        };
+        });
       });
     });
   }

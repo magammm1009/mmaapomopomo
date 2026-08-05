@@ -1,5 +1,5 @@
 <!doctype html>
-<!-- POMO GitHub standalone v4.5.0 / 2026-08-06 / 글자수 기록 파이프라인 Firebase RTDB 전환 -->
+<!-- POMO GitHub standalone v4.5.1 / 2026-08-06 / 직접 입력 탭을 먼슬리식 기록 입력으로 개편 -->
 <html>
 <head>
   <meta charset="utf-8"/>
@@ -13,12 +13,12 @@
   <script src="./config.js?v=20260802-timer-transition-v4-4-14"></script>
   <!-- ✅ v4.5.0: 글자수 기록 엔진(순수 로직) + RTDB 어댑터. 기록만 Firebase로 처리하고
        접속자/세션 관련 호출은 기존 Apps Script 경로를 그대로 사용합니다. -->
-  <script src="./pomo-record-engine.js?v=20260806-rtdb-records-v4-5-0"></script>
-  <script src="./pomo-rtdb-records.js?v=20260806-rtdb-records-v4-5-0"></script>
+  <script src="./pomo-record-engine.js?v=20260806-direct-input-v4-5-1"></script>
+  <script src="./pomo-rtdb-records.js?v=20260806-direct-input-v4-5-1"></script>
   <script>
   (function(){
     'use strict';
-    const VERSION = 'github-standalone-v4.5.0-rtdb-records-20260806';
+    const VERSION = 'github-standalone-v4.5.1-direct-input-20260806';
     const cfg = window.POMO_APP_CONFIG || {};
     const endpoint = String(cfg.POMO_APP_URL || '').trim();
     const isMissing = !endpoint || endpoint.includes('여기에_Apps_Script') || endpoint.includes('YOUR_');
@@ -566,7 +566,7 @@
   text-overflow: ellipsis;
 }
 
-/* ===== 기록 방식 전환: 채팅 / 시트 직접 입력 ===== */
+/* ===== 기록 방식 전환: 채팅 / 직접 입력 ===== */
 .recordModeTabs{
   display:grid;
   grid-template-columns:1fr 1fr;
@@ -628,79 +628,68 @@
 .recordQueueStatus.isOk{background:rgba(238,251,247,.97);border-color:#9fddcf;color:#1f6555;}
 .recordQueueStatus.isError{background:rgba(255,240,243,.98);border-color:#efb9c8;color:#8a2947;}
 .recordModePanel.isHidden{ display:none !important; }
-.sheetDirectHead{
-  display:flex;
+/* ---- 직접 입력: 슬롯 칩 / 오늘 상태 / 입력 줄 (v4.5.1) ---- */
+.directSlotChips{ display:flex; gap:6px; flex-wrap:wrap; margin-bottom:9px; }
+.directSlotChip{
+  border:1px solid var(--line);
+  background:#fff;
+  border-radius:999px;
+  padding:7px 12px;
+  font-size:12px;
+  font-weight:850;
+  color:#666;
+  min-width:0;
+}
+.directSlotChip.isActive{ background:var(--pink); border-color:#f2a8c8; color:var(--text); }
+.directSlotChip.addSlot{ border-style:dashed; color:#a15a7f; }
+.directTodayBox{
+  background:var(--pink);
+  border-radius:14px;
+  padding:12px 14px;
+  margin-bottom:10px;
+}
+.directTodayBig{ font-size:19px; font-weight:950; }
+.directTodaySub{ font-size:11.5px; color:#a15a7f; font-weight:800; margin-top:4px; }
+.directTodayEpisode{ font-size:11.5px; color:#a15a7f; font-weight:850; margin-top:4px; }
+.directTodayAll{ font-size:11.5px; color:#a15a7f; font-weight:850; margin-top:4px; }
+.directRow{
+  display:grid;
+  grid-template-columns:40px minmax(0,1fr) 86px;
   align-items:center;
-  justify-content:space-between;
-  gap:10px;
+  gap:6px;
   margin-bottom:8px;
 }
-.sheetDirectActions{ display:flex; align-items:center; justify-content:flex-end; gap:6px; flex-wrap:wrap; }
-.sheetDirectActions .btnGhost{ padding:8px 9px; font-size:11px; }
-.sheetDirectTitle{ font-weight:950; font-size:14px; }
-.sheetDirectSub{ color:var(--muted); font-size:11px; line-height:1.45; margin-top:2px; }
-.sheetDirectStatus{
+.directRow label{ font-size:12px; font-weight:850; color:#604b56; }
+.directRow input{
+  width:100%;
+  min-width:0;
   padding:9px 10px;
-  border-radius:12px;
-  background:#fff8e8;
-  border:1px solid #f5dfad;
+  border:1px solid var(--line);
+  border-radius:10px;
+  font-size:14px;
+}
+.directRow button{
+  min-width:0;
+  width:100%;
+  padding:9px 4px;
+  border-radius:10px;
   font-size:12px;
-  font-weight:750;
+  background:var(--pink);
+}
+.directRow button.isCurrent{ background:var(--mint); }
+.directEpisodeBtn{ width:100%; min-width:0; padding:9px 4px; border-radius:10px; font-size:12px; }
+.directStatusLine{
+  min-height:17px;
+  margin:9px 0 0;
+  font-size:12px;
+  font-weight:850;
+  color:#a15a7f;
   line-height:1.45;
-  margin-bottom:9px;
 }
-.sheetDirectStatus.isOk{ background:#eefbf7; border-color:#c9eee3; }
-.sheetDirectStatus.isError{ background:#fff0f3; border-color:#f5cbd6; }
-.sheetDirectSummary{ margin:-1px 0 9px; padding:7px 9px; border-radius:11px; background:#f2fbf8; border:1px solid #d2eee6; color:#286758; font-size:11px; font-weight:850; }
-.sheetBlockList{
-  display:grid;
-  grid-template-columns:repeat(2,minmax(0,1fr));
-  gap:9px;
-  max-height:520px;
-  overflow:auto;
-  padding:1px 2px 3px;
-}
-.sheetBlock{
-  border:1px solid var(--line);
-  border-radius:14px;
-  padding:10px;
-  background:#fff;
-  min-width:0;
-}
-.sheetBlock.isMine{ border-color:#9fddcf; box-shadow:0 0 0 2px rgba(159,221,207,.17); }
-.sheetBlock.isLocked{ opacity:.62; background:#fafafa; }
-.sheetBlock.isPending{ border-color:#f2c45f; box-shadow:0 0 0 2px rgba(242,196,95,.18); }
-.sheetBlock.isPending .sheetEntryLine button{ opacity:.62; cursor:wait; }
-.sheetBlock.isChoice{ border-style:dashed; background:#fffafd; }
-.sheetChooseBtn{ width:100%; min-width:0; padding:8px 7px; border-radius:10px; background:#ffe0ef; color:#6f2048; font-size:11px; }
-.sheetEmptyState{ grid-column:1/-1; padding:18px 12px; border:1px dashed var(--line); border-radius:14px; text-align:center; color:var(--muted); font-size:12px; font-weight:800; }
-.sheetBlockTop{ display:flex; justify-content:space-between; align-items:flex-start; gap:8px; }
-.sheetBlockName{ font-size:13px; font-weight:950; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
-.sheetBlockTotal{ font-size:12px; font-weight:950; color:#16715c; white-space:nowrap; }
-.sheetBlockMeta{ color:var(--muted); font-size:10px; margin:3px 0 8px; }
-.sheetEntryGrid{ display:grid; gap:7px; }
-.sheetEntryLine{ display:grid; grid-template-columns:42px minmax(0,1fr) 48px; align-items:center; gap:5px; }
-.sheetEntryLine label{ font-size:11px; font-weight:850; color:#604b56; }
-.sheetEntryLine input{
-  width:100%;
-  min-width:0;
-  padding:7px 8px;
-  border:1px solid var(--line);
-  border-radius:9px;
-  font-size:13px;
-}
-.sheetEntryLine button{
-  min-width:0;
-  width:100%;
-  padding:7px 4px;
-  border-radius:9px;
-  font-size:11px;
-  background:var(--mint);
-}
-.sheetEntryLine button[data-kind="base"]{ background:var(--pink); }
+.directStatusLine.isError{ color:#8a2947; }
 .sheetEntryHint{ margin-top:8px; color:var(--muted); font-size:10px; line-height:1.4; }
-@media (max-width:520px){
-  .sheetBlockList{ grid-template-columns:1fr; }
+@media (max-width:360px){
+  .directRow{ grid-template-columns:34px minmax(0,1fr) 74px; }
 }
 
 /* (선택) 아주 좁을 때 더 촘촘하게 */
@@ -1153,7 +1142,7 @@
 
       <div class="recordModeTabs" role="tablist" aria-label="기록 방식 선택">
         <button class="recordModeTab isActive" id="btnModeChat" type="button" role="tab" aria-selected="true">💬 채팅 기록</button>
-        <button class="recordModeTab" id="btnModeSheet" type="button" role="tab" aria-selected="false">📋 시트 직접 입력</button>
+        <button class="recordModeTab" id="btnModeSheet" type="button" role="tab" aria-selected="false">📋 직접 입력</button>
       </div>
       <div class="recordQueueStatus isHidden" id="recordQueueStatus" role="status" aria-live="polite" aria-atomic="true"></div>
 
@@ -1178,20 +1167,26 @@
       </div>
 
       <div class="recordModePanel isHidden" id="sheetModePanel">
-        <div class="sheetDirectHead">
-          <div>
-            <div class="sheetDirectTitle">오늘 뽀모 시트 직접 입력</div>
-            <div class="sheetDirectSub">내 칸만 표시됩니다. 같은 닉네임으로 여러 칸을 사용하면 기존 시트에서 합산돼요.</div>
-          </div>
-          <div class="sheetDirectActions">
-            <button class="btnGhost" id="btnDirectAddSlot" type="button">＋ 다른 칸 추가 선택</button>
-            <button class="btnGhost" id="btnDirectRefresh" type="button">↻ 새로고침</button>
-          </div>
+        <div class="directSlotChips" id="directSlotChips"></div>
+        <div class="directTodayBox">
+          <div class="directTodayBig" id="directTodayBig">오늘 기준이 아직 없어요</div>
+          <div class="directTodaySub" id="directTodaySub"></div>
+          <div class="directTodayEpisode" id="directTodayEpisode" style="display:none;"></div>
+          <div class="directTodayAll" id="directTodayAll" style="display:none;"></div>
         </div>
-        <div class="sheetDirectStatus" id="sheetDirectStatus">시트 입력 모드를 열면 오늘 시트를 불러옵니다.</div>
-        <div class="sheetDirectSummary" id="sheetDirectSummary">닉네임을 입력하면 사용할 수 있는 칸을 안내합니다.</div>
-        <div class="sheetBlockList" id="sheetBlockList"></div>
-        <div class="sheetEntryHint">빈 칸을 선택한 뒤 처음 저장하면 닉네임이 등록됩니다. 다른 사용자의 칸은 숨겨지며 수정할 수 없습니다.</div>
+        <div class="directRow">
+          <label>시작</label>
+          <input id="directStartInput" inputmode="numeric" pattern="[0-9]*" placeholder="시작 글자수" />
+          <button id="btnDirectStart" type="button">🚩 시작</button>
+        </div>
+        <div class="directRow">
+          <label>현재</label>
+          <input id="directCurrentInput" inputmode="numeric" pattern="[0-9]*" placeholder="현재 글자수" />
+          <button class="isCurrent" id="btnDirectSnapshot" type="button">✅ 반영</button>
+        </div>
+        <button class="btnGhost directEpisodeBtn" id="btnDirectEpisode" type="button">🆕 새편 시작</button>
+        <div class="directStatusLine" id="directStatusLine"></div>
+        <div class="sheetEntryHint">채팅 기록과 똑같은 방식으로 계산돼요. 🚩시작=오늘 누적을 0으로 되돌리고 기준을 새로 저장 · ✅반영=직전 값과의 차이만 누적 · 🆕새편=새 회차를 0자부터</div>
       </div>
     </div>
   </div>
@@ -1260,8 +1255,6 @@
   const KST_OFFSET_MS = 9 * 60 * 60 * 1000;
   const CMD_QUEUE_STORAGE_KEY = 'VENT_CMD_QUEUE_V1';
   const RECORD_MODE_STORAGE_KEY = 'VENT_RECORD_MODE_V1';
-  const DIRECT_QUEUE_STORAGE_KEY = 'VENT_DIRECT_QUEUE_V1';
-  const DIRECT_STATE_STORAGE_KEY = 'VENT_DIRECT_STATE_LOCAL_V1';
   const SESSION_ID_STORAGE_KEY = 'VENT_PERMANENT_SESSION_ID_V1';
   let sessionId = null;
   let pom = null;
@@ -1320,15 +1313,14 @@
   let cmdWorking_ = false;
   let cmdQueueRestored_ = false;
   let recordMode_ = 'chat';
-  let directSheetLoading_ = false;
-  let directSheetState_ = null;
-  const directPendingBlocks_ = Object.create(null);
-  const directSelectedEmptyBlocks_ = new Set();
-  let directSlotPickerOpen_ = false;
-  let directSelectionViewer_ = '';
-  const directQueue_ = [];
-  let directQueueWorking_ = false;
-  let directQueueRestored_ = false;
+  // v4.5.1 직접 입력: 슬롯 선택 + 오늘 상태 구독 (기록 계산은 채팅과 같은 어댑터 경로)
+  let directSlot_ = 0;
+  let directState_ = null;
+  let directStateUnsub_ = null;
+  let directWatchKey_ = '';
+  let directMySlots_ = [];
+  let directSlotTotals_ = Object.create(null);   // 슬롯번호 → 오늘 누적(days 기준)
+  let directRunning_ = false;
   let recordRpcOwner_ = '';
 
   // sound
@@ -1977,10 +1969,16 @@ function upgradeLegacyGuideText_(text){
   let out = String(text || '')
     .replace('• 시작 : 작업 25분 → 휴식 5분 자동 반복\n• 정지 : 타이머 일시 정지\n• 리셋 : 현재 사이클 초기화', '• 타이머 : 한국시간 자정부터 작업 25분 → 휴식 5분 자동 반복\n• 언제 접속해도 모두 같은 시간에 맞춰 바로 참여')
     .replace('• 호스트를 기준으로 뽀모 타이머가 돌아갑니다', '• 호스트 없이 24시간 자동으로 타이머가 돌아갑니다');
-  if (!out.includes('📋 시트 직접 입력')) {
-    out = out.replace('✍기록 방법\n', '✍기록 방법\n• 💬 채팅 기록 / 📋 시트 직접 입력 탭 중 원하는 방식을 선택\n• 시트 직접 입력 모드에서는 채팅이 숨겨지고 오늘 뽀모 시트에 바로 반영\n');
+  // v4.5.1: 시트 칸 개념이 사라져, 예전에 안내하던 시트 문구를 새 직접 입력 설명으로 바꿉니다.
+  out = out
+    .replace('• 💬 채팅 기록 / 📋 시트 직접 입력 탭 중 원하는 방식을 선택\n', '• 💬 채팅 기록 / 📋 직접 입력 탭 중 원하는 방식을 선택\n')
+    .replace('• 시트 직접 입력 모드에서는 채팅이 숨겨지고 오늘 뽀모 시트에 바로 반영\n', '• 📋 직접 입력에서는 채팅 없이 시작/현재/새편 버튼으로 바로 기록\n')
+    .replace('• 시트 직접 입력 모드에서는 내 칸만 표시되고 오늘 뽀모 시트에 바로 반영\n', '• 📋 직접 입력에서는 채팅 없이 시작/현재/새편 버튼으로 바로 기록\n')
+    .replace('• 여러 작품은 “다른 칸 추가 선택”으로 같은 닉네임 칸을 늘리며 시트에서 합산\n', '• 여러 작품은 ＋ 다른 작품 칩으로 전환하며 기록 (오늘 누적은 전체 합산 표시)\n');
+  if (!out.includes('📋 직접 입력')) {
+    out = out.replace('✍기록 방법\n', '✍기록 방법\n• 💬 채팅 기록 / 📋 직접 입력 탭 중 원하는 방식을 선택\n• 📋 직접 입력에서는 채팅 없이 시작/현재/새편 버튼으로 바로 기록\n');
   }
-  if (!out.includes('다른 칸 추가 선택')) out = out.replace('• 시트 직접 입력 모드에서는 채팅이 숨겨지고 오늘 뽀모 시트에 바로 반영\n', '• 시트 직접 입력 모드에서는 내 칸만 표시되고 오늘 뽀모 시트에 바로 반영\n• 여러 작품은 “다른 칸 추가 선택”으로 같은 닉네임 칸을 늘리며 시트에서 합산\n');
+  if (!out.includes('＋ 다른 작품')) out = out.replace('• 📋 직접 입력에서는 채팅 없이 시작/현재/새편 버튼으로 바로 기록\n', '• 📋 직접 입력에서는 채팅 없이 시작/현재/새편 버튼으로 바로 기록\n• 여러 작품은 ＋ 다른 작품 칩으로 전환하며 기록 (오늘 누적은 전체 합산 표시)\n');
   if (!out.includes('자정에는 채팅창만')) out = out.replace('✍기록 방법\n', '✍기록 방법\n• 세션과 자동 타이머는 계속 유지되고, 한국시간 자정에는 채팅창만 새 날짜 방으로 전환\n');
   return out;
 }
@@ -2212,7 +2210,7 @@ window.guideSave = async function(){
 
     if (presenceSnapshotSyncTimer) clearTimeout(presenceSnapshotSyncTimer);
     presenceSnapshotSyncTimer = setTimeout(async ()=>{
-      if (recordRpcOwner_ || cmdWorking_ || directQueueWorking_) {
+      if (recordRpcOwner_ || cmdWorking_) {
         lastPresenceSnapshotHash = '';
         schedulePresenceSnapshotSync_(clean);
         return;
@@ -2826,10 +2824,11 @@ window.guideSave = async function(){
 
     if (lastAutoDayKey && state.dayKey !== lastAutoDayKey && midnightRefreshDay !== state.dayKey) {
       midnightRefreshDay = state.dayKey;
-      directSelectedEmptyBlocks_.clear();
-      directSlotPickerOpen_ = false;
-      directSheetState_ = null;
-      renderDirectSheet_();
+      // 자정: 오늘 상태 구독을 새 날짜로 갈아끼우고 입력칸을 비웁니다.
+      directSlot_ = 0;
+      directMySlots_ = [];
+      directSetStatus_('');
+      refreshDirectPanel_();
       if (sessionId) initFirebaseChat_(chatRoomIdForDay_(state.dayKey));
       pingBackoff = 0;
       joinOrPing_();
@@ -2901,7 +2900,7 @@ window.guideSave = async function(){
 
   async function joinOrPing_(){
     if (isStopped) return;
-    if (recordRpcOwner_ || cmdWorking_ || directQueueWorking_) { schedulePing_(); return; }
+    if (recordRpcOwner_ || cmdWorking_) { schedulePing_(); return; }
     try{
       const fnName = presenceRegisteredOnServer ? 'joinOrPing' : 'enterPresence';
       // 새 배포 직후 Apps Script 첫 실행은 수십 초 걸릴 수 있습니다. 12초에
@@ -2940,9 +2939,6 @@ window.guideSave = async function(){
         initGuide_(sessionId);
         restoreCommandQueue_();
         if (cmdQueue_.length && !cmdWorking_) processCmdQueue_();
-        restoreDirectQueue_();
-        if (directQueue_.length && !directQueueWorking_) processDirectQueue_();
-        if (recordMode_ === 'sheet') loadDirectSheet_();
       }
 
       renderTop();
@@ -3006,24 +3002,21 @@ window.guideSave = async function(){
   }
 
   // =====================
-  // 기록 방식 전환 + 오늘 시트 직접 입력
+  // 기록 방식 전환 + 직접 입력 (v4.5.1)
+  // - 채팅 기록과 완전히 같은 계산 경로: 명령 문자열을 만들어
+  //   POMO_RTDB_RECORDS.processCommandOnly로 보낸다.
+  // - 채팅방에는 아무것도 남기지 않는다(조용한 기록).
+  // - 오늘 내 상태는 pomoRecords/state/{오늘}/{슬롯} 구독으로 실시간 표시.
   // =====================
   function directSetStatus_(text, kind){
-    const el = $('sheetDirectStatus');
+    const el = $('directStatusLine');
     if (!el) return;
     el.textContent = String(text || '');
-    el.classList.toggle('isOk', kind === 'ok');
     el.classList.toggle('isError', kind === 'error');
   }
 
   function directRequestId_(){
-    const dayKey = currentRecordDayKey_();
-    try{
-      if (window.crypto && typeof window.crypto.randomUUID === 'function') {
-        return `direct|${dayKey}|${window.crypto.randomUUID()}`;
-      }
-    }catch(e){}
-    return `direct|${dayKey}|${CLIENT_ID}|${Date.now()}|${Math.random().toString(36).slice(2)}`;
+    return `direct_${Date.now()}_${Math.random().toString(36).slice(2, 10)}`;
   }
 
   function setRecordMode_(mode, options){
@@ -3037,400 +3030,233 @@ window.guideSave = async function(){
     $('btnModeChat').setAttribute('aria-selected', isSheet ? 'false' : 'true');
     $('btnModeSheet').setAttribute('aria-selected', isSheet ? 'true' : 'false');
     try{ localStorage.setItem(RECORD_MODE_STORAGE_KEY, recordMode_); }catch(e){}
-    if (isSheet && !opts.skipLoad) loadDirectSheet_();
+    if (isSheet && !opts.skipLoad) refreshDirectPanel_();
   }
 
   function directNormalizeName_(name){
     return String(name || '').trim().replace(/\s+/g, ' ');
   }
 
-  function directPersistLocalState_(){
-    if (!directSheetState_ || !Array.isArray(directSheetState_.blocks)) return;
-    try{
-      localStorage.setItem(DIRECT_STATE_STORAGE_KEY, JSON.stringify({
-        dayKey: currentRecordDayKey_(),
-        storedAtMs: Date.now(),
-        state: directSheetState_
-      }));
-    }catch(e){}
+  /** 기록 대상 슬롯 이름 — 채팅 명령과 같은 규칙(Core.commandTargetName) */
+  function directSlotName_(slot){
+    const Core = window.PomoRecordCore;
+    const nm = directNormalizeName_(myName());
+    if (!Core) return Number(slot) >= 1 ? `${nm} /${slot}` : nm;
+    return Core.commandTargetName({ slot: Number(slot) || 0 }, nm);
   }
 
-  function directRestoreLocalState_(){
+  function directHasName_(){
+    return !!directNormalizeName_($('user') ? $('user').value : '');
+  }
+
+  /** 오늘 내 상태 구독 (닉네임·슬롯·날짜가 바뀌면 구독을 갈아끼운다) */
+  async function watchDirectState_(){
+    const Core = window.PomoRecordCore;
+    const nextKey = directHasName_() && Core
+      ? `${currentRecordDayKey_()}|${Core.slotKey(directSlotName_(directSlot_))}`
+      : '';
+    if (nextKey === directWatchKey_) return;
+    if (directStateUnsub_) { try{ directStateUnsub_(); }catch(e){} directStateUnsub_ = null; }
+    directWatchKey_ = nextKey;
+    directState_ = null;
+    renderDirectTodayBox_();
+    if (!nextKey) return;
     try{
-      const saved = JSON.parse(localStorage.getItem(DIRECT_STATE_STORAGE_KEY) || 'null');
-      if (!saved || saved.dayKey !== currentRecordDayKey_()) return false;
-      if (!saved.state || !Array.isArray(saved.state.blocks)) return false;
-      directSheetState_ = saved.state;
-      renderDirectSheet_();
-      directSetStatus_('최근 정상 시트 상태를 먼저 표시했습니다. 서버에서 최신 값을 확인 중이에요.');
-      return true;
+      await fbEnsureReady_();
+      if (directWatchKey_ !== nextKey) return;   // 대기 중 다시 바뀐 경우
+      const [dayKey, slotKey] = nextKey.split('|');
+      const r = window.FB.ref(window.FB.db, `pomoRecords/state/${dayKey}/${slotKey}`);
+      const cb = (snap)=>{
+        if (directWatchKey_ !== nextKey) return;
+        directState_ = snap && typeof snap.val === 'function' ? snap.val() : null;
+        renderDirectTodayBox_();
+      };
+      window.FB.onValue(r, cb);
+      directStateUnsub_ = ()=> window.FB.off(r, 'value', cb);
     }catch(e){
-      return false;
+      // 구독에 실패하면 키를 비워 다음 갱신 때 다시 시도하게 한다.
+      if (directWatchKey_ === nextKey) directWatchKey_ = '';
+      directSetStatus_('기록 서버 연결을 준비하는 중이에요. 잠시 후 다시 눌러 주세요.', 'error');
     }
   }
 
-  function renderDirectSheet_(){
-    const root = $('sheetBlockList');
-    const summary = $('sheetDirectSummary');
-    const addBtn = $('btnDirectAddSlot');
-    if (!root) return;
-    const state = directSheetState_;
-    if (!state || !Array.isArray(state.blocks)) {
-      root.innerHTML = '';
-      if (summary) summary.textContent = '닉네임을 입력하면 사용할 수 있는 칸을 안내합니다.';
-      if (addBtn) { addBtn.disabled = true; addBtn.textContent = '＋ 다른 칸 추가 선택'; }
-      return;
-    }
-
-    const viewer = directNormalizeName_(myName());
-    if (viewer !== directSelectionViewer_) {
-      directSelectionViewer_ = viewer;
-      directSelectedEmptyBlocks_.clear();
-      directSlotPickerOpen_ = false;
-    }
-
-    const blockByIndex = new Map(state.blocks.map((block)=>[Number(block.index), block]));
-    for (const index of Array.from(directSelectedEmptyBlocks_)) {
-      const block = blockByIndex.get(Number(index));
-      const blockName = directNormalizeName_(block && block.name);
-      const pending = directPendingBlocks_[String(index)] || null;
-      if (!block || (blockName && blockName !== viewer) || (blockName === viewer && !pending)) directSelectedEmptyBlocks_.delete(index);
-    }
-
-    const mineBlocks = state.blocks.filter((block)=>viewer && directNormalizeName_(block.name) === viewer);
-    const emptyBlocks = state.blocks.filter((block)=>!directNormalizeName_(block.name));
-    const forcedFirstChoice = !!viewer && mineBlocks.length === 0 && directSelectedEmptyBlocks_.size === 0;
-    const showChoices = forcedFirstChoice || directSlotPickerOpen_;
-    const combinedTotal = mineBlocks.reduce((sum, block)=>sum + Number(block.total || 0), 0);
-
-    if (summary) {
-      summary.textContent = !viewer
-        ? '상단 닉네임을 먼저 입력해 주세요.'
-        : mineBlocks.length
-          ? `내 작업 칸 ${mineBlocks.length}개 · 합산 누적 ${combinedTotal.toLocaleString('ko-KR')}자${directSelectedEmptyBlocks_.size ? ` · 새 칸 ${directSelectedEmptyBlocks_.size}개 선택 중` : ''}`
-          : directSelectedEmptyBlocks_.size
-            ? `새 작업 칸 ${directSelectedEmptyBlocks_.size}개 선택 중 · 기준값을 저장하면 닉네임이 등록됩니다.`
-            : '사용할 빈 칸을 하나 골라 주세요.';
-    }
-    if (addBtn) {
-      addBtn.disabled = !viewer || emptyBlocks.length === 0 || forcedFirstChoice;
-      addBtn.textContent = !viewer
-        ? '＋ 닉네임 필요'
-        : emptyBlocks.length === 0
-          ? '사용 가능한 빈 칸 없음'
-          : forcedFirstChoice
-            ? '사용할 칸 선택 중'
-            : directSlotPickerOpen_ ? '✕ 추가 선택 닫기' : '＋ 다른 칸 추가 선택';
-    }
-
-    const visibleBlocks = state.blocks.filter((block)=>{
-      const blockName = directNormalizeName_(block.name);
-      if (viewer && blockName === viewer) return true;
-      if (blockName) return false;
-      const selected = directSelectedEmptyBlocks_.has(Number(block.index));
-      return selected || showChoices;
-    });
-
-    root.innerHTML = visibleBlocks.map((block)=>{
-      const blockName = directNormalizeName_(block.name);
-      const mine = !!viewer && !!blockName && blockName === viewer;
-      const selected = !blockName && directSelectedEmptyBlocks_.has(Number(block.index));
-      const choice = !blockName && !selected;
-      const pending = directPendingBlocks_[String(block.index)] || null;
-      const canEdit = !!viewer && (mine || selected) && !pending;
-      const cardClass = [mine || selected ? 'isMine' : '', choice ? 'isChoice' : '', pending ? 'isPending' : ''].filter(Boolean).join(' ');
-      const displayName = blockName || (selected ? `선택한 칸 · ${viewer} 등록 예정` : '사용 가능한 빈 칸');
-      const baseValue = block.base == null ? '' : String(block.base);
-      const currentValue = pending && pending.kind === 'current' ? String(pending.value) : '';
-      const pendingLabel = pending ? ` · ${pending.kind === 'base' ? '기준' : '현재'} ${Number(pending.value).toLocaleString('ko-KR')}자 반영 중` : '';
-      if (choice) return `
-        <div class="sheetBlock isChoice" data-block-index="${Number(block.index)}">
-          <div class="sheetBlockTop"><div class="sheetBlockName">사용 가능한 빈 칸</div><div class="sheetBlockTotal">누적 0자</div></div>
-          <div class="sheetBlockMeta">${escapeHtml(state.sheetName || '')} · ${escapeHtml(block.position || block.id || '')}</div>
-          <button class="sheetChooseBtn" type="button" data-direct-choose="1">이 칸 선택</button>
-        </div>`;
-      return `
-        <div class="sheetBlock ${cardClass}" data-block-index="${Number(block.index)}">
-          <div class="sheetBlockTop">
-            <div class="sheetBlockName" title="${escapeHtml(displayName)}">${escapeHtml(displayName)}</div>
-            <div class="sheetBlockTotal">누적 ${Number(block.total || 0).toLocaleString('ko-KR')}자</div>
-          </div>
-          <div class="sheetBlockMeta">${escapeHtml(state.sheetName || '')} · ${escapeHtml(block.position || block.id || '')}${escapeHtml(pendingLabel)}</div>
-          <div class="sheetEntryGrid">
-            <div class="sheetEntryLine">
-              <label>기준</label>
-              <input inputmode="numeric" pattern="[0-9]*" data-direct-input="base" value="${escapeHtml(baseValue)}" placeholder="시작 글자수" ${canEdit ? '' : 'disabled'} />
-              <button type="button" data-direct-save="1" data-kind="base" ${canEdit ? '' : 'disabled'}>저장</button>
-            </div>
-            <div class="sheetEntryLine">
-              <label>현재</label>
-              <input inputmode="numeric" pattern="[0-9]*" data-direct-input="current" value="${escapeHtml(currentValue)}" placeholder="현재 글자수" ${canEdit ? '' : 'disabled'} />
-              <button type="button" data-direct-save="1" data-kind="current" ${canEdit ? '' : 'disabled'}>반영</button>
-            </div>
-          </div>
-          ${selected && !pending ? '<button class="sheetChooseBtn" type="button" data-direct-unchoose="1">이 칸 선택 취소</button>' : ''}
-        </div>`;
-    }).join('');
-    if (!visibleBlocks.length) root.innerHTML = '<div class="sheetEmptyState">현재 표시할 내 작업 칸이나 사용 가능한 빈 칸이 없습니다.</div>';
-  }
-
-  function chooseDirectSlot_(index){
-    const viewer = directNormalizeName_(myName());
-    const block = directSheetState_ && Array.isArray(directSheetState_.blocks)
-      ? directSheetState_.blocks.find((item)=>Number(item.index) === Number(index)) : null;
-    if (!viewer) { directSetStatus_('상단 닉네임을 먼저 입력해 주세요.', 'error'); return; }
-    if (!block || directNormalizeName_(block.name)) { directSetStatus_('이미 사용 중인 칸입니다. 새로고침 후 다른 칸을 골라 주세요.', 'error'); return; }
-    directSelectedEmptyBlocks_.add(Number(index));
-    directSlotPickerOpen_ = false;
-    renderDirectSheet_();
-    directSetStatus_('새 작업 칸을 선택했어요. 기준값을 저장하면 같은 닉네임으로 등록되고 기존 시트에서 합산됩니다.', 'ok');
-  }
-
-  function unchooseDirectSlot_(index){
-    directSelectedEmptyBlocks_.delete(Number(index));
-    renderDirectSheet_();
-    directSetStatus_('선택을 취소했습니다. 필요하면 다른 빈 칸을 골라 주세요.');
-  }
-
-  function toggleDirectSlotPicker_(){
-    const viewer = directNormalizeName_(myName());
-    if (!viewer) { directSetStatus_('상단 닉네임을 먼저 입력해 주세요.', 'error'); return; }
-    const available = directSheetState_ && Array.isArray(directSheetState_.blocks)
-      ? directSheetState_.blocks.some((block)=>!directNormalizeName_(block.name)) : false;
-    if (!available) { directSetStatus_('현재 선택할 수 있는 빈 칸이 없습니다.', 'error'); return; }
-    directSlotPickerOpen_ = !directSlotPickerOpen_;
-    renderDirectSheet_();
-    directSetStatus_(directSlotPickerOpen_ ? '추가로 사용할 빈 칸을 골라 주세요.' : '추가 선택 화면을 닫았습니다.');
-  }
-
-  async function loadDirectSheet_(options){
-    const opts = options || {};
-    if (directSheetLoading_) return;
-    // v4.5.0: RTDB 어댑터가 오늘 상태를 직접 읽으므로 세션 발급을 기다리지 않습니다.
-    const allowWithoutSession = opts.allowWithoutSession === true || recordsHandledLocally_('getDirectSheetState');
-    if (!sessionId && !allowWithoutSession) {
-      if (!opts.silent) directSetStatus_('서버 연결을 준비하고 있어요. 잠시 후 자동으로 불러옵니다.');
-      return;
-    }
-    directSheetLoading_ = true;
-    if (!opts.silent) directSetStatus_('오늘 뽀모 시트를 불러오는 중…');
-    const refreshBtn = $('btnDirectRefresh');
-    if (refreshBtn) refreshBtn.disabled = true;
+  /** 오늘 내 슬롯 번호·슬롯별 누적 — days/{월}/{오늘} 1회 조회(상시 구독 없음) */
+  async function loadDirectMySlots_(){
+    const Core = window.PomoRecordCore;
+    if (!directHasName_() || !Core) { directMySlots_ = []; directSlotTotals_ = Object.create(null); return; }
+    const me = Core.normalizeName(myName());
+    const dayKey = currentRecordDayKey_();
     try{
-      // 조회 함수는 빈 세션 ID를 안전하게 허용합니다. 초기 입장 응답을 기다리지 않고
-      // 오늘 시트를 병렬로 요청해, 서버가 느릴 때도 전체 대기 시간을 겹쳐 줄입니다.
-      const res = await gasCallPromise_(
-        'getDirectSheetState',
-        [String(sessionId || '')],
-        sessionId ? 30000 : 60000
-      );
-      if (!res || res.ok === false) {
-        if (res && res.reason === 'SESSION_CHANGED') {
-          pingBackoff = 0;
-          joinOrPing_();
-        }
-        throw new Error((res && res.message) || '오늘 시트를 불러오지 못했습니다.');
-      }
-      directSheetState_ = res;
-      directPersistLocalState_();
-      renderDirectSheet_();
-      if (!opts.silent) directSetStatus_(`${res.sheetName} 시트와 동기화됐어요. 상단 닉네임과 같은 칸만 입력할 수 있습니다.`, 'ok');
+      await fbEnsureReady_();
+      const snap = await window.FB.get(window.FB.ref(window.FB.db, `pomoRecords/days/${dayKey.slice(0,7)}/${dayKey}`));
+      const entry = (snap && typeof snap.val === 'function' ? snap.val() : null) || {};
+      const found = {};
+      const totals = Object.create(null);
+      Object.keys(entry).forEach((k)=>{
+        const v = entry[k] || {};
+        const nm = String(v.name != null ? v.name : k);
+        if (Core.normalizeName(Core.displayBaseName(nm)) !== me) return;
+        const m = nm.match(/\/\s*(\d+)\s*$/);
+        const n = m ? (parseInt(m[1], 10) || 0) : 0;
+        if (n > 0) found[n] = true;
+        totals[n] = (totals[n] || 0) + (Number(v.total) || 0);
+      });
+      directMySlots_ = Object.keys(found).map(Number).sort((a,b)=>a-b);
+      directSlotTotals_ = totals;
     }catch(e){
-      if (!opts.silent) {
-        if (directSheetState_) directSetStatus_('최근 정상 시트 상태를 표시 중입니다. 서버의 최신 값 확인이 늦어지고 있어요.');
-        else directSetStatus_(e && e.message ? e.message : '시트를 불러오지 못했습니다.', 'error');
-      }
-    }finally{
-      directSheetLoading_ = false;
-      if (refreshBtn) refreshBtn.disabled = false;
+      directMySlots_ = [];
+      directSlotTotals_ = Object.create(null);
     }
   }
 
-  function persistDirectQueue_(){
-    try{ localStorage.setItem(DIRECT_QUEUE_STORAGE_KEY, JSON.stringify(directQueue_)); }catch(e){}
-  }
-
-  function restoreDirectQueue_(){
-    if (directQueueRestored_) return;
-    directQueueRestored_ = true;
-    try{
-      const parsed = JSON.parse(localStorage.getItem(DIRECT_QUEUE_STORAGE_KEY) || '[]');
-      const cutoff = Date.now() - 48 * 60 * 60 * 1000;
-      const currentDayKey = currentRecordDayKey_();
-      for (const raw of (Array.isArray(parsed) ? parsed : [])) {
-        if (!raw || !raw.requestId || Number(raw.createdAtMs || 0) < cutoff) continue;
-        if (!raw.dayKey || String(raw.dayKey) !== currentDayKey) continue;
-        if (!directQueue_.some(j => j.requestId === raw.requestId)) directQueue_.push(raw);
-      }
-      persistDirectQueue_();
-    }catch(e){ try{ localStorage.removeItem(DIRECT_QUEUE_STORAGE_KEY); }catch(_e){} }
-  }
-
-  function finishDirectJob_(){
-    directQueue_.shift();
-    persistDirectQueue_();
-  }
-
-  function setDirectPending_(job, isPending){
-    if (!job || !Number.isInteger(Number(job.index))) return;
-    const key = String(Number(job.index));
-    if (isPending) directPendingBlocks_[key] = { kind:String(job.kind || ''), value:Number(job.value || 0) };
-    else delete directPendingBlocks_[key];
-    renderDirectSheet_();
-  }
-
-  function applyDirectOptimistic_(job){
-    if (!directSheetState_ || !Array.isArray(directSheetState_.blocks)) return;
-    const index = Number(job.index);
-    directSheetState_.blocks = directSheetState_.blocks.map((block)=>{
-      if (Number(block.index) !== index) return block;
-      const next = { ...block, name:block.name || job.name };
-      if (job.kind === 'base') {
-        next.base = Number(job.value);
-        next.total = 0;
-      }
-      return next;
+  /** 지금 보고 있는 슬롯을 뺀 나머지 작품들의 오늘 누적 합 */
+  function directOtherSlotsTotal_(){
+    let sum = 0;
+    Object.keys(directSlotTotals_).forEach((k)=>{
+      if (Number(k) === Number(directSlot_)) return;
+      sum += Number(directSlotTotals_[k]) || 0;
     });
+    return sum;
   }
 
-  function applyDirectResult_(job, res){
-    if (directSheetState_ && Array.isArray(directSheetState_.blocks) && res && res.block) {
-      directSheetState_.blocks = directSheetState_.blocks.map((block)=>
-        Number(block.index) === Number(job.index) ? res.block : block
-      );
-      if (res.sheetName) directSheetState_.sheetName = res.sheetName;
-    }
-    directSelectedEmptyBlocks_.delete(Number(job.index));
-    directSlotPickerOpen_ = false;
-    setDirectPending_(job, false);
-    directPersistLocalState_();
+  function renderDirectSlotChips_(){
+    const host = $('directSlotChips');
+    if (!host) return;
+    const chips = [0].concat(directMySlots_.filter((n)=>n > 0));
+    if (directSlot_ > 0 && chips.indexOf(directSlot_) < 0) chips.push(directSlot_);
+    let html = '';
+    chips.forEach((n)=>{
+      const label = n === 0 ? '기본' : `/${n}`;
+      html += `<button class="directSlotChip${n === directSlot_ ? ' isActive' : ''}" data-direct-slot="${n}" type="button">${escapeHtml(label)}</button>`;
+    });
+    html += '<button class="directSlotChip addSlot" id="btnDirectAddSlot" type="button">＋ 다른 작품</button>';
+    host.innerHTML = html;
   }
 
-  function rollbackDirectOptimistic_(job){
-    if (job && job.previousBlock && directSheetState_ && Array.isArray(directSheetState_.blocks)) {
-      directSheetState_.blocks = directSheetState_.blocks.map((block)=>
-        Number(block.index) === Number(job.index) ? job.previousBlock : block
-      );
-    }
-    setDirectPending_(job, false);
-  }
-
-  function enqueueDirectJob_(job){
-    if (!job || !job.requestId || directQueue_.some(j => j.requestId === job.requestId)) return;
-    directQueue_.push({ ...job, tries:0, backoff:1200, createdAtMs:Date.now() });
-    persistDirectQueue_();
-    if (!directQueueWorking_) processDirectQueue_();
-  }
-
-  async function processDirectQueue_(){
-    if (directQueueWorking_) return;
-    directQueueWorking_ = true;
-    try{
-      while (directQueue_.length){
-        const job = directQueue_[0];
-        if (!job || !job.requestId) { finishDirectJob_(); continue; }
-        setDirectPending_(job, true);
-        if (!job.dayKey || job.dayKey !== currentRecordDayKey_()) {
-          directSetStatus_('날짜가 바뀌어 이전 날짜의 미처리 시트 입력은 오늘 시트에 반영하지 않았어요.', 'error');
-          rollbackDirectOptimistic_(job);
-          finishDirectJob_();
-          continue;
-        }
-        // v4.5.0: RTDB 처리에는 세션 개념이 없으므로 세션 불일치 드롭을 건너뜁니다.
-        if (!recordsHandledLocally_('saveDirectSheetEntry') && sessionId && job.sid !== sessionId) {
-          directSetStatus_('날짜가 바뀌어 이전 날짜의 미처리 시트 입력은 자동 반영하지 않았어요. 값을 다시 확인해 주세요.', 'error');
-          rollbackDirectOptimistic_(job);
-          finishDirectJob_();
-          continue;
-        }
-        try{
-          let res;
-          await acquireRecordRpc_('direct');
-          try{
-            res = await gasCallPromise_('saveDirectSheetEntry', [job.sid, job.name, job.index, job.kind, job.value, job.requestId, job.dayKey], 35000);
-          }finally{
-            releaseRecordRpc_('direct');
-          }
-          if (res && res.busy) throw new Error('SERVER_BUSY');
-          if (!res || res.ok === false) {
-            if (res && res.reason === 'SESSION_CHANGED') {
-              rollbackDirectOptimistic_(job);
-              finishDirectJob_();
-              directSetStatus_('날짜가 바뀌었습니다. 오늘 시트를 다시 불러와 입력해 주세요.', 'error');
-              pingBackoff = 0;
-              joinOrPing_();
-              continue;
-            }
-            if (res && res.reason === 'DAY_CHANGED') {
-              rollbackDirectOptimistic_(job);
-              finishDirectJob_();
-              directSetStatus_('자정이 지나 이전 날짜 입력은 오늘 시트에 반영하지 않았어요. 값을 다시 확인해 주세요.', 'error');
-              continue;
-            }
-            const msg = (res && res.message) || '시트 입력을 반영하지 못했습니다.';
-            rollbackDirectOptimistic_(job);
-            finishDirectJob_();
-            directSetStatus_(msg, 'error');
-            if (res && res.reason === 'NAME_MISMATCH') setTimeout(()=>loadDirectSheet_({ silent:true }), 0);
-            continue;
-          }
-          if (job.dayKey !== currentRecordDayKey_()) {
-            rollbackDirectOptimistic_(job);
-            finishDirectJob_();
-            directSetStatus_('자정이 지나 오늘 시트를 새로 불러옵니다.', 'ok');
-            setTimeout(()=>loadDirectSheet_({ silent:true }), 0);
-            continue;
-          }
-          applyDirectResult_(job, res);
-          finishDirectJob_();
-          directSetStatus_(res.message || '시트에 반영했습니다.', 'ok');
-        }catch(e){
-          releaseRecordRpc_('direct');
-          job.tries = Number(job.tries || 0) + 1;
-          job.backoff = Math.min(30000, Math.floor(Number(job.backoff || 1200) * 1.5) + 400);
-          persistDirectQueue_();
-          directSetStatus_(job.tries >= 3
-            ? '입력 요청을 이 기기에 안전하게 보관했어요. 서버 연결이 돌아오면 자동 반영합니다.'
-            : '서버 연결이 잠깐 늦어 시트 입력을 자동 재시도 중이에요.');
-          await new Promise(r => setTimeout(r, job.backoff + Math.floor(Math.random() * 500)));
-        }
-      }
-    }finally{
-      directQueueWorking_ = false;
-    }
-  }
-
-  function handleDirectSave_(button){
-    if (!button) return;
-    // v4.5.0: RTDB 어댑터가 있으면 세션 발급 전에도 바로 저장할 수 있습니다.
-    if (!sessionId && !recordsHandledLocally_('saveDirectSheetEntry')) return;
-    const card = button.closest('.sheetBlock');
-    if (!card) return;
-    const kind = String(button.dataset.kind || '');
-    const input = card.querySelector(`[data-direct-input="${kind}"]`);
-    const raw = String(input && input.value || '').replace(/,/g, '').trim();
-    const name = directNormalizeName_(myName());
-    if (!name) { directSetStatus_('상단 닉네임을 먼저 입력해 주세요.', 'error'); return; }
-    if (!/^\d{1,12}$/.test(raw)) { directSetStatus_('0 이상의 숫자만 입력해 주세요.', 'error'); return; }
-    const index = Number(card.dataset.blockIndex);
-    const previousBlock = directSheetState_ && Array.isArray(directSheetState_.blocks)
-      ? directSheetState_.blocks.find((block)=>Number(block.index) === index)
+  function renderDirectTodayBox_(){
+    const Core = window.PomoRecordCore;
+    const big = $('directTodayBig'), sub = $('directTodaySub'), epEl = $('directTodayEpisode');
+    const allEl = $('directTodayAll');
+    if (!big || !sub || !epEl) return;
+    const named = directHasName_();
+    const st = (named && directState_ && Core)
+      ? Core.normState(directState_, directSlotName_(directSlot_))
       : null;
-    const job = {
-      sid:String(sessionId || '').trim() || 'rtdb',
-      name,
-      index,
-      kind,
-      value:Number(raw),
-      dayKey:currentRecordDayKey_(),
-      previousBlock:previousBlock ? { ...previousBlock } : null,
-      requestId:directRequestId_()
-    };
-    applyDirectOptimistic_(job);
-    setDirectPending_(job, true);
-    directSetStatus_('입력값을 먼저 표시했어요. 기존 시트 기록 흐름까지 안전하게 확인 중…');
-    enqueueDirectJob_(job);
+    if (!named) {
+      big.textContent = '상단 닉네임을 먼저 입력해 주세요';
+      sub.textContent = '';
+      epEl.style.display = 'none';
+    } else if (!st || st.baseline == null) {
+      big.textContent = '오늘 기준이 아직 없어요';
+      sub.textContent = '시작 글자수를 남기면 오늘 기록이 시작돼요.';
+      epEl.style.display = 'none';
+    } else {
+      big.textContent = `오늘 누적 ${Core.fmtNum(st.total)}자`;
+      const curTxt = st.last == null ? '-' : `${Core.fmtNum(st.last)}자`;
+      sub.textContent = `기준 ${Core.fmtNum(st.baseline)}자 · 현재 ${curTxt}`;
+      if (st.ep != null && st.ep >= 1) {
+        epEl.style.display = '';
+        epEl.textContent = `${st.ep}편 진행 중`;
+      } else {
+        epEl.style.display = 'none';
+      }
+    }
+    // 다른 작품 슬롯이 있을 때만 하루 전체 합산을 한 줄 덧붙인다(먼슬리와 같은 기준).
+    if (allEl) {
+      const otherTotal = named ? directOtherSlotsTotal_() : 0;
+      if (named && otherTotal > 0) {
+        const mine = st ? Number(st.total) || 0 : 0;
+        allEl.style.display = '';
+        allEl.textContent = `다른 작품 포함 오늘 전체 ${Core.fmtNum(mine + otherTotal)}자`;
+      } else {
+        allEl.style.display = 'none';
+        allEl.textContent = '';
+      }
+    }
+    syncDirectInputs_(st);
+    const disabled = !named || directRunning_;
+    ['btnDirectStart','btnDirectSnapshot','btnDirectEpisode'].forEach((id)=>{
+      const b = $(id);
+      if (b) b.disabled = disabled;
+    });
   }
+
+  /** 입력칸 동기화. 사용자가 그 칸에 포커스를 두고 있으면 덮어쓰지 않는다. */
+  function syncDirectInputs_(st){
+    const startEl = $('directStartInput'), curEl = $('directCurrentInput');
+    const active = document.activeElement;
+    if (startEl && active !== startEl) {
+      if (!st || st.baseline == null) startEl.value = '';
+      else startEl.value = (st.ep != null && st.ep >= 1) ? '0' : String(st.baseline);
+    }
+    if (curEl && active !== curEl) {
+      curEl.value = (st && st.last != null) ? String(st.last) : '';
+    }
+  }
+
+  async function refreshDirectPanel_(){
+    renderDirectSlotChips_();
+    renderDirectTodayBox_();
+    await watchDirectState_();
+    await loadDirectMySlots_();
+    renderDirectSlotChips_();
+    renderDirectTodayBox_();
+  }
+
+
+  /* 직접 입력 실행부: 채팅 기록과 똑같은 명령 문자열을 만들어 같은 어댑터로 보낸다.
+     채팅방에는 아무것도 남기지 않는다(조용한 기록). 같은 requestId 재시도는
+     어댑터가 중복 방지하므로 별도의 영속 큐가 필요 없다. */
+  async function runDirectCommand_(kind, rawValue){
+    if (directRunning_) return;
+    if (!directHasName_()) { directSetStatus_('상단 닉네임을 먼저 입력해 주세요.', 'error'); return; }
+    if (!recordsHandledLocally_('processCommandOnly')) {
+      directSetStatus_('기록 모듈을 불러오지 못했어요. 새로고침 후 다시 시도해 주세요.', 'error');
+      return;
+    }
+
+    let body;
+    if (kind === 'episode') {
+      body = '새편';
+    } else {
+      const num = String(rawValue == null ? '' : rawValue).replace(/,/g, '').trim();
+      if (!/^\d{1,12}$/.test(num)) { directSetStatus_('0 이상의 숫자만 입력해 주세요.', 'error'); return; }
+      body = kind === 'start' ? `시작 ${num}` : String(num);
+    }
+    const cmdText = directSlot_ > 0 ? `/${directSlot_} ${body}` : body;
+
+    directRunning_ = true;
+    renderDirectTodayBox_();
+    directSetStatus_('기록하는 중…');
+    try{
+      const res = await window.POMO_RTDB_RECORDS.call('processCommandOnly', [
+        sessionId || 'rtdb',
+        myName(),
+        cmdText,
+        directRequestId_(),
+        currentRecordDayKey_()
+      ]);
+      if (res && res.ok === false && res.reason === 'DAY_CHANGED') {
+        directSetStatus_('자정이 지났어요. 오늘 기준을 새로 저장해 주세요.', 'error');
+      } else if (res && res.hadCommand && res.sysText) {
+        directSetStatus_(res.sysText);
+      } else if (res && res.ok === false) {
+        directSetStatus_((res && res.message) || '기록하지 못했어요. 잠시 후 다시 눌러 주세요.', 'error');
+      } else {
+        directSetStatus_('입력값을 확인하지 못했어요. 다시 확인해 주세요.', 'error');
+      }
+      await loadDirectMySlots_();
+      renderDirectSlotChips_();
+      renderDirectTodayBox_();
+    }catch(e){
+      directSetStatus_('기록 서버 응답이 늦어요. 잠시 후 다시 눌러 주세요.', 'error');
+    }finally{
+      directRunning_ = false;
+      renderDirectTodayBox_();
+    }
+  }
+
+
 
   // =====================
   // Audio
@@ -4350,17 +4176,30 @@ window.guideSave = async function(){
   $('sendBtn').addEventListener('click', send);
   $('btnModeChat').addEventListener('click', ()=>setRecordMode_('chat'));
   $('btnModeSheet').addEventListener('click', ()=>setRecordMode_('sheet'));
-  $('btnDirectAddSlot').addEventListener('click', toggleDirectSlotPicker_);
-  $('btnDirectRefresh').addEventListener('click', loadDirectSheet_);
-  $('sheetBlockList').addEventListener('click', (e)=>{
+  // 직접 입력 패널 (v4.5.1)
+  $('directSlotChips').addEventListener('click', (e)=>{
     if (!e.target || !e.target.closest) return;
-    const choose = e.target.closest('[data-direct-choose="1"]');
-    if (choose) { const card=choose.closest('.sheetBlock'); if(card) chooseDirectSlot_(Number(card.dataset.blockIndex)); return; }
-    const unchoose = e.target.closest('[data-direct-unchoose="1"]');
-    if (unchoose) { const card=unchoose.closest('.sheetBlock'); if(card) unchooseDirectSlot_(Number(card.dataset.blockIndex)); return; }
-    const btn = e.target.closest('[data-direct-save="1"]');
-    if (btn) handleDirectSave_(btn);
+    markUserGesture();
+    if (e.target.closest('#btnDirectAddSlot')) {
+      if (!directHasName_()) { directSetStatus_('상단 닉네임을 먼저 입력해 주세요.', 'error'); return; }
+      const used = directMySlots_.filter((n)=>n > 0);
+      directSlot_ = used.length ? (Math.max(...used) + 1) : 1;
+      directSetStatus_(`새 작품 칸(/${directSlot_})을 골랐어요. 시작 글자수를 저장하면 등록됩니다.`);
+      refreshDirectPanel_();
+      return;
+    }
+    const chip = e.target.closest('.directSlotChip[data-direct-slot]');
+    if (chip) {
+      directSlot_ = Number(chip.dataset.directSlot) || 0;
+      directSetStatus_('');
+      refreshDirectPanel_();
+    }
   });
+  $('btnDirectStart').addEventListener('click', ()=>runDirectCommand_('start', $('directStartInput').value));
+  $('btnDirectSnapshot').addEventListener('click', ()=>runDirectCommand_('snapshot', $('directCurrentInput').value));
+  $('btnDirectEpisode').addEventListener('click', ()=>runDirectCommand_('episode', null));
+  $('directStartInput').addEventListener('keydown', (e)=>{ if (e.key === 'Enter') $('btnDirectStart').click(); });
+  $('directCurrentInput').addEventListener('keydown', (e)=>{ if (e.key === 'Enter') $('btnDirectSnapshot').click(); });
   // 🚩 시작 스냅샷(기준) 버튼
   $('btnStartSnap').addEventListener('click', () => {
     const raw = prompt('🚩 시작 스냅샷(현재 글자수)을 입력해줘.\n예: 1234');
@@ -4815,7 +4654,9 @@ window.guideSave = async function(){
 
     $('user').addEventListener('input', async ()=>{
       localStorage.setItem('VENT_NAME_V2', myName());
-      renderDirectSheet_();
+      // 닉네임이 바뀌면 오늘 상태 구독과 슬롯 목록을 다시 잡습니다.
+      directSlot_ = 0;
+      refreshDirectPanel_();
       const nm = String(myName()).trim().slice(0,12) || '익명';
 
       if (presenceStarted && sessionId && presenceUid){
@@ -4831,7 +4672,7 @@ window.guideSave = async function(){
       if (presenceNameSyncTimer) clearTimeout(presenceNameSyncTimer);
       presenceNameSyncTimer = setTimeout(async ()=>{
         if (isStopped || presenceLeaving) return;
-        if (recordRpcOwner_ || cmdWorking_ || directQueueWorking_) return;
+        if (recordRpcOwner_ || cmdWorking_) return;
         try{
           const res = await gasCallPromise_('enterPresence', [CLIENT_ID, nm], 10000);
           presenceRegisteredOnServer = true;
@@ -4849,7 +4690,6 @@ window.guideSave = async function(){
     ensureCustomSoundsLoaded_();
     const savedRecordMode = localStorage.getItem(RECORD_MODE_STORAGE_KEY) || 'chat';
     setRecordMode_(savedRecordMode, { skipLoad:true });
-    if (recordMode_ === 'sheet') directRestoreLocalState_();
 
     // 첫 제스처 확보
     window.addEventListener('pointerdown', markUserGesture, { once:true });
@@ -4861,7 +4701,8 @@ window.guideSave = async function(){
     // 2) 오늘 채팅은 날짜 방을 사용하므로 Apps Script 입장 응답과 독립적으로 먼저 엽니다.
     initFirebaseChat_(chatRoomIdForDay_(currentRecordDayKey_()));
     if (sessionId) startPresence_().catch(()=>{});
-    if (recordMode_ === 'sheet') loadDirectSheet_({ allowWithoutSession:true });
+    // 직접 입력 패널은 Apps Script 세션과 무관하게 바로 동작합니다.
+    refreshDirectPanel_();
 
     // 3) 초기 ping (세션/기록 연결 확보)
     joinOrPing_();

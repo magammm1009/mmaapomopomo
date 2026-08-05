@@ -301,12 +301,19 @@
    * 채팅 명령 상태 전이 (순수) — VentWebApp handleCommand_ 이식
    * 반환: { state, events:[...], sysText, recorded }
    *   events[]: { type, cur, delta, totalAfter, raw } — 감사로그용
+   *
+   * ctx (선택): { otherSlotsTotal: number }
+   *   같은 사람의 다른 작품 슬롯 오늘 합계. 주면 문구의 "오늘 누적"이
+   *   하루 전체 합산(이 슬롯 + 다른 슬롯)으로 표시된다 (2026-08-06 사용자 요청 —
+   *   먼슬리 합산과 동일 기준). 계산·상태 전이는 영향 없음, 표시 전용.
    * ===================== */
-  function applyChatCommand(prevState, parsed, user) {
+  function applyChatCommand(prevState, parsed, user, ctx) {
     var name = commandTargetName(parsed, user);
     var st = normState(prevState, name);
     st.name = name;
     var events = [], sysText = '', recorded = true;
+    var otherTotal = (ctx && isNum(ctx.otherSlotsTotal)) ? Math.max(0, Math.trunc(Number(ctx.otherSlotsTotal))) : 0;
+    function dayTotal() { return st.total + otherTotal; }
 
     switch (parsed.kind) {
       case 'snapshot': {
@@ -325,7 +332,7 @@
           sysText = '📌 오늘 기준 저장: ' + name + ' ' + fmtNum(cur) + '자';
         } else {
           var sign = delta >= 0 ? '+' : '';
-          sysText = '✅ ' + name + ' ' + sign + fmtNum(delta) + ' (현재 ' + fmtNum(cur) + ' / 오늘 누적 ' + fmtNum(st.total) + ')';
+          sysText = '✅ ' + name + ' ' + sign + fmtNum(delta) + ' (현재 ' + fmtNum(cur) + ' / 오늘 누적 ' + fmtNum(dayTotal()) + ')';
         }
         break;
       }
@@ -334,7 +341,7 @@
         st.total = Math.max(0, st.total + d);
         if (st.ep != null && st.ep >= 1) st.epTotal = Math.max(0, (st.epTotal || 0) + d);
         events.push({ type: 'delta', cur: null, delta: d, totalAfter: st.total, raw: parsed.raw });
-        sysText = '➕ 반영: ' + name + ' ' + fmtSigned(d) + ' (오늘 누적 ' + fmtNum(st.total) + '자)';
+        sysText = '➕ 반영: ' + name + ' ' + fmtSigned(d) + ' (오늘 누적 ' + fmtNum(dayTotal()) + '자)';
         break;
       }
       case 'baseline': { // '시작 N' — 오늘 초기화 후 기준 저장 (VentWebApp: resetToday_ + applySnapshotToLog_)
@@ -343,7 +350,7 @@
         events.push({ type: 'reset', cur: null, delta: null, totalAfter: 0, raw: '오늘 기록 초기화' });
         st.baseline = b; st.last = b;
         events.push({ type: 'baseline', cur: b, delta: 0, totalAfter: 0, raw: parsed.raw });
-        sysText = '🚩 시작 스냅샷 저장: ' + name + ' ' + fmtNum(b) + '자 (오늘 누적 0자)';
+        sysText = '🚩 시작 스냅샷 저장: ' + name + ' ' + fmtNum(b) + '자 (오늘 누적 ' + fmtNum(dayTotal()) + '자)';
         break;
       }
       case 'episode': {
@@ -351,7 +358,7 @@
         st.epTotal = 0; st.epLast = 0; st.epStartedAt = Date.now();
         st.last = 0; // baseline은 유지 (VentWebApp startNewEpisode_)
         events.push({ type: 'episode_start', cur: null, delta: null, totalAfter: st.total, raw: '새편 시작' });
-        sysText = '🆕 새편 시작! ' + name + ' ' + st.ep + '편을 0자부터 기록할게요. (기존 누적 ' + fmtNum(st.total) + '자 유지)';
+        sysText = '🆕 새편 시작! ' + name + ' ' + st.ep + '편을 0자부터 기록할게요. (기존 누적 ' + fmtNum(dayTotal()) + '자 유지)';
         break;
       }
       case 'reset': {
@@ -371,7 +378,7 @@
           sysText = 'ℹ️ ' + name + ' 오늘 기준값이 아직 없어요. 먼저 스냅샷(현재 글자수)을 입력해줘!';
         } else {
           var curTxt = (st.last == null) ? '-' : (fmtNum(st.last) + '자');
-          sysText = '📌 오늘 기준: ' + name + ' ' + fmtNum(st.baseline) + '자 (현재 ' + curTxt + ' / 오늘 누적 ' + fmtNum(st.total) + '자)';
+          sysText = '📌 오늘 기준: ' + name + ' ' + fmtNum(st.baseline) + '자 (현재 ' + curTxt + ' / 오늘 누적 ' + fmtNum(dayTotal()) + '자)';
         }
         break;
       }
