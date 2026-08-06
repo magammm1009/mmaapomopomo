@@ -1,7 +1,7 @@
 // 마끝마 뽀모 PWA Service Worker
-// v4.5.1 — 직접 입력 탭을 먼슬리식 기록 입력으로 개편
+// v4.5.2 — 대시보드용 pomoHub 세션 공개
 
-const CACHE_NAME = 'pomo-github-standalone-v4-5-1-20260806-direct-input-v1';
+const CACHE_NAME = 'pomo-github-standalone-v4-5-2-20260806-pomohub-v1';
 const STATIC_ASSETS = [
   './offline.html',
   './manifest.webmanifest',
