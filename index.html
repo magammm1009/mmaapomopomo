@@ -1,5 +1,5 @@
 <!doctype html>
-<!-- POMO GitHub standalone v4.5.2 / 2026-08-06 / 대시보드용 pomoHub 세션 공개 -->
+<!-- POMO GitHub standalone v4.6.0 / 2026-08-06 / Apps Script 완전 철거 — 세션·접속자·기록 전부 Firebase -->
 <html>
 <head>
   <meta charset="utf-8"/>
@@ -18,7 +18,7 @@
   <script>
   (function(){
     'use strict';
-    const VERSION = 'github-standalone-v4.5.2-pomohub-20260806';
+    const VERSION = 'github-standalone-v4.6.0-no-gas-20260806';
     const cfg = window.POMO_APP_CONFIG || {};
     const endpoint = String(cfg.POMO_APP_URL || '').trim();
     const isMissing = !endpoint || endpoint.includes('여기에_Apps_Script') || endpoint.includes('YOUR_');
@@ -1269,9 +1269,15 @@
       await window.FB.ensureAnonAuth();
       const hubRef = window.FB.ref(window.FB.db, 'pomoHub/currentSessionV1');
       let cur = null;
-      try{ const s = await window.FB.get(hubRef); cur = s.exists() ? (s.val() || null) : null; }catch(e){}
+      // v4.6.0: 허브 읽기에 실패하면 공개를 보류한다. 확인 없이 쓰면
+      // 허브의 진짜 세션을 모르는 채 덮어쓸 위험이 있다(허브가 원본).
+      try{ const s = await window.FB.get(hubRef); cur = s.exists() ? (s.val() || null) : null; }
+      catch(e){ __pomoHubPublishedSid = ''; return; }
       const curSid = cur && cur.sessionId ? String(cur.sessionId) : '';
       const curAt = cur ? Number(cur.updatedAtMs || 0) : 0;
+      // v4.6.0: 허브에 이미 "다른" 세션이 공개돼 있으면 덮어쓰지 않는다.
+      // 불일치는 joinOrPing_가 다음 확인 주기에 허브 값을 채택하는 방식으로 해소된다.
+      if (curSid && curSid !== sid){ __pomoHubPublishedSid = ''; return; }
       // 이미 같은 값이고 6시간 이내 갱신이면 쓰기 생략(불필요한 RTDB 쓰기 방지)
       if (curSid === sid && (Date.now() - curAt) < 6 * 60 * 60 * 1000){ __pomoHubPublishedSid = sid; return; }
       await window.FB.set(hubRef, { sessionId: sid, updatedAtMs: Date.now() });
@@ -2214,44 +2220,8 @@ window.guideSave = async function(){
   }
 
   function schedulePresenceSnapshotSync_(entries, forceRefresh){
-    const clean = Array.isArray(entries)
-      ? entries
-          .map(it=>({ clientId:String(it && it.clientId || '').trim(), name:String(it && it.name || '').trim().slice(0,12) || '익명' }))
-          .filter(it=>it.clientId)
-          .sort((a,b)=>a.clientId.localeCompare(b.clientId))
-      : [];
-    presenceSnapshotLatestEntries = clean;
-
-    // 명단 변화는 대표 1기기만 전송하되, 주기 갱신은 새 버전 접속자라면
-    // 누구든 보낼 수 있게 해 구 버전 기기가 대표일 때도 서버 스냅샷이 만료되지 않게 한다.
-    if (!clean.length || presenceLeaving) return;
-    if (!forceRefresh && clean[0].clientId !== CLIENT_ID) return;
-    const hash = JSON.stringify(clean);
-    const refreshDue = (Date.now() - lastPresenceSnapshotSyncAt) >= 55 * 1000;
-    if (!forceRefresh && hash === lastPresenceSnapshotHash && !refreshDue) return;
-    lastPresenceSnapshotHash = hash;
-
-    if (presenceSnapshotSyncTimer) clearTimeout(presenceSnapshotSyncTimer);
-    presenceSnapshotSyncTimer = setTimeout(async ()=>{
-      if (recordRpcOwner_ || cmdWorking_) {
-        lastPresenceSnapshotHash = '';
-        schedulePresenceSnapshotSync_(clean);
-        return;
-      }
-      try{
-        const res = await gasCallPromise_('syncPresenceSnapshot', [clean], 10000);
-        if (res && res.busy) {
-          lastPresenceSnapshotHash = '';
-          schedulePresenceSnapshotSync_(clean);
-          return;
-        }
-        lastPresenceSnapshotSyncAt = Date.now();
-        if (!firebasePresenceReady) applyServerPresence_(res);
-      }catch(e){
-        // Firebase 화면 원본은 이미 정상이라 서버 복제 실패가 UI를 0명으로 만들지 않음
-        lastPresenceSnapshotHash = '';
-      }
-    }, 3000);
+    // v4.6.0: Apps Script presence 복제를 철거했습니다.
+    // Firebase connection snapshot이 유일한 원본이라 서버 스냅샷 동기화가 필요 없습니다.
   }
 
   function startPresenceLive_(roomId){
@@ -2261,9 +2231,6 @@ window.guideSave = async function(){
 
     stopPresenceLive_();
     presenceLiveRoomId = rid;
-    presenceSnapshotRefreshTimer = setInterval(()=>{
-      schedulePresenceSnapshotSync_(presenceSnapshotLatestEntries, true);
-    }, 60 * 1000);
 
     try{
       const root = window.FB.ref(window.FB.db, fbPresenceConnPath_(rid));
@@ -2411,9 +2378,6 @@ window.guideSave = async function(){
       const r = await refreshPresenceList_();
       activeCount = r.count;
       activeNames = r.names;
-      if (!r.entries.length){
-        try{ applyServerPresence_(await getActiveUsersServer_()); }catch(e){}
-      }
     }
     renderTop();
 
@@ -2703,7 +2667,20 @@ window.guideSave = async function(){
       // v4.5.0: RTDB가 기록을 처리하면 세션 개념(SESSION_CHANGED)이 없으므로
       // 세션 관련 드롭 조건을 건너뜁니다. 날짜 가드는 그대로 유지합니다.
       const localRecords = recordsHandledLocally_('processCommandOnly');
-      if (!job.sid && !localRecords) { finishCommandJob_(); continue; }
+      if (!localRecords) {
+        // v4.6.0: Apps Script 폴백을 철거했습니다. RTDB 기록 모듈이 아직 로드되지
+        // 않았다면 잡을 버리지 않고 기존 재시도 구조로 보관한 채 나중에 다시 시도합니다.
+        job.tries += 1;
+        if (!job.notified){
+          job.notified = true;
+          setRecordQueueStatus_('기록 모듈을 불러오는 중이에요. 요청을 이 기기에 보관하고 자동 재시도 중입니다.');
+        }
+        job.backoff = Math.min(30000, Math.floor(job.backoff * 1.5) + 400);
+        persistCommandQueue_();
+        const jitter = Math.floor(Math.random() * 300);
+        await new Promise(r => setTimeout(r, job.backoff + jitter));
+        continue;
+      }
 
       if (!job.dayKey || job.dayKey !== currentRecordDayKey_()) {
         try{ await fbSend_('SYSTEM', '⚠️ 날짜가 바뀌어 이전 날짜의 미처리 기록은 반영하지 않았어요.', 'system', `${job.messageKey}_result`); }catch(e){}
@@ -2921,53 +2898,88 @@ window.guideSave = async function(){
     pingTimer = setTimeout(()=>{ joinOrPing_(); }, delay);
   }
 
+  // v4.6.0: 세션 ID를 Apps Script 대신 localStorage → RTDB 허브(pomoHub/currentSessionV1)
+  // 순으로 해석합니다. 이후 ping은 허브 재확인 + 미완료 init 재시도만 수행합니다(rGet 1회).
+  let sessionInitDone_ = false;
+
   async function joinOrPing_(){
     if (isStopped) return;
     if (recordRpcOwner_ || cmdWorking_) { schedulePing_(); return; }
+
+    // Firebase 모듈이 아직 로드되지 않았다면 짧은 backoff 후 재시도합니다.
+    if (!window.FB || !window.FB.db) {
+      pingBackoff = Math.min(25000, pingBackoff + 2000);
+      schedulePing_();
+      return;
+    }
+
     try{
-      const fnName = presenceRegisteredOnServer ? 'joinOrPing' : 'enterPresence';
-      // 새 배포 직후 Apps Script 첫 실행은 수십 초 걸릴 수 있습니다. 12초에
-      // 요청을 버리고 중복 호출하던 흐름을 없애고, 첫 응답을 충분히 기다립니다.
-      const res = await gasCallPromise_(
-        fnName,
-        [CLIENT_ID, myName()],
-        presenceRegisteredOnServer ? 20000 : 60000
-      );
+      // 허브 확인: 대시보드/관리 도구가 공개한 현재 세션 ID를 읽습니다(없어도 무방).
+      let hubSid = '';
+      let hubReadOk = false;
+      try{
+        await window.FB.ensureAnonAuth();
+        const hubRef = window.FB.ref(window.FB.db, 'pomoHub/currentSessionV1');
+        const snap = await window.FB.get(hubRef);
+        hubReadOk = true;
+        const cur = snap.exists() ? (snap.val() || null) : null;
+        hubSid = cur && cur.sessionId ? String(cur.sessionId).trim() : '';
+      }catch(e){}
 
-      if (!res) { schedulePing_(); return; }
-      if (res.ok === false && res.reason === 'SESSION_CHANGED') { handleSessionEnded(); return; }
+      if (hubSid && sessionId && hubSid !== String(sessionId)) {
+        if (!sessionInitDone_) {
+          // 아직 초기화 전(첫 결정 시점): 허브 값을 조용히 채택합니다.
+          sessionId = hubSid;
+          try{ localStorage.setItem(SESSION_ID_STORAGE_KEY, hubSid); }catch(e){}
+          // 부팅 직후 이전 sid로 presence가 먼저 시작됐다면 새 sid로 다시 시작합니다.
+          if (presenceStarted || presenceLiveRoomId) {
+            try{ await stopPresence_(); }catch(e){}
+            presenceLeaving = false;
+          }
+        } else {
+          // 이미 이 세션으로 운영 중: 기존 SESSION_CHANGED 흐름과 동일하게 재시작합니다.
+          // reload 후 무한 루프가 되지 않도록 새 세션 ID를 먼저 저장합니다.
+          try{ localStorage.setItem(SESSION_ID_STORAGE_KEY, hubSid); }catch(e){}
+          stopAll();
+          showOverlay('세션이 갱신됐어요', '세션이 새로 열렸어요. 잠시 후 자동으로 재연결할게요.');
+          setTimeout(()=>{ try{ location.reload(); } catch(e){} }, 1800);
+          return;
+        }
+      }
+
+      if (!sessionId) {
+        // sid 결정: localStorage → 허브 → 고정 기본값(결정적 상수, 무작위 생성 금지)
+        let sid = '';
+        try{ sid = String(localStorage.getItem(SESSION_ID_STORAGE_KEY) || '').trim(); }catch(e){}
+        if (!sid) sid = hubSid;
+        if (!sid && !hubReadOk) {
+          // v4.6.0: 저장된 세션도 없고 허브 확인도 실패했다면 세션을 지어내지 않는다.
+          // (일시 장애 중에 기본값으로 시작하면 진짜 세션과 갈라질 수 있음 → 다음 핑에서 재시도)
+          pingBackoff = Math.min(25000, pingBackoff + 5000);
+          return;
+        }
+        if (!sid) sid = 'pomo-main-v1';
+        sessionId = sid;
+      }
+
       presenceRegisteredOnServer = true;
-
-      if (!sessionId && res.sessionId) {
-        sessionId = res.sessionId;
-      } else if (sessionId && res.sessionId && res.sessionId !== sessionId) {
-        stopAll();
-        showOverlay('세션이 갱신됐어요', '세션이 새로 열렸어요. 잠시 후 자동으로 재연결할게요.');
-        setTimeout(()=>{ try{ location.reload(); } catch(e){} }, 1800);
-        return;
-      }
-      if (res.sessionId) {
-        try{ localStorage.setItem(SESSION_ID_STORAGE_KEY, String(res.sessionId)); }catch(e){}
-      }
-      // ✅ v4.5.2: 세션 ID 확정 직후 대시보드용 허브 노드에 공개(실패해도 무시)
+      try{ localStorage.setItem(SESSION_ID_STORAGE_KEY, String(sessionId)); }catch(e){}
+      // ✅ 세션 ID 확정 직후 대시보드용 허브 노드에 공개(실패해도 무시)
       try{ publishPomoHubSession_(); }catch(e){}
 
       hostName = '24H AUTO';
       iAmHost = false;
-      if (!firebasePresenceReady) applyServerPresence_(res);
-      if (res.pom) onPomState({ ok:true, ...res.pom }, { silent:true });
 
-      if (sessionId){
-        initFirebaseChat_(chatRoomIdForDay_(currentRecordDayKey_()));
-        await startPresence_();
-        initNotice_(sessionId);
-        initGuide_(sessionId);
-        restoreCommandQueue_();
-        if (cmdQueue_.length && !cmdWorking_) processCmdQueue_();
-      }
+      initFirebaseChat_(chatRoomIdForDay_(currentRecordDayKey_()));
+      await startPresence_();
+      initNotice_(sessionId);
+      initGuide_(sessionId);
+      restoreCommandQueue_();
+      if (cmdQueue_.length && !cmdWorking_) processCmdQueue_();
+      sessionInitDone_ = true;
 
       renderTop();
-      pingBackoff = res.busy ? Math.min(120000, pingBackoff + 10000) : Math.max(0, pingBackoff - 10000);
+      pingBackoff = Math.max(0, pingBackoff - 10000);
     }catch(e){
       pingBackoff = (!presenceRegisteredOnServer || !sessionId)
         ? Math.min(25000, pingBackoff + 5000)
@@ -4566,16 +4578,9 @@ window.guideSave = async function(){
     markUserGesture();
     $('btnLeave').disabled = true;
     stopAll();
+    // v4.6.0: Firebase connection node 제거가 곧 퇴장 처리입니다(서버 통지 없음).
     await stopPresence_();
-
-    try{
-      const res = await gasCallPromise_('leavePresence', [CLIENT_ID], 10000);
-      if (res) applyServerPresence_(res);
-      showOverlay('나갔어요', '접속자 목록에서 바로 제외됐어요. 안녕! 😊');
-    }catch(e){
-      sendPresenceLeaveBeacon_();
-      showOverlay('나갔어요', '화면에서는 퇴장했어요. 서버 정리는 백그라운드로 한 번 더 요청했어요.');
-    }
+    showOverlay('나갔어요', '접속자 목록에서 바로 제외됐어요. 안녕! 😊');
   });
 
   $('btnOnline').addEventListener('click', openOnlineList);
@@ -4628,28 +4633,8 @@ window.guideSave = async function(){
     });
   })();
 
-  function sendPresenceLeaveBeacon_(){
-    if (!presenceRegisteredOnServer) return;
-    const cfg = window.POMO_APP_CONFIG || {};
-    const endpoint = String(cfg.POMO_APP_URL || '').trim();
-    if (!endpoint) return;
-    presenceRegisteredOnServer = false;
-
-    const payload = JSON.stringify({ action:'presence-leave', clientId:CLIENT_ID, at:Date.now() });
-    try{
-      if (navigator.sendBeacon) {
-        navigator.sendBeacon(endpoint, new Blob([payload], { type:'text/plain;charset=UTF-8' }));
-      }
-    }catch(e){}
-
-    // Apps Script redirect/브라우저별 Beacon 차이를 위한 idempotent keepalive GET 안전판
-    try{
-      const sep = endpoint.includes('?') ? '&' : '?';
-      fetch(endpoint + sep + 'api=presence-leave&clientId=' + encodeURIComponent(CLIENT_ID) + '&_t=' + Date.now(), {
-        method:'GET', mode:'no-cors', cache:'no-store', keepalive:true
-      }).catch(()=>{});
-    }catch(e){}
-  }
+  // v4.6.0: Apps Script presence-leave 비콘을 철거했습니다.
+  // 창 종료 시 Firebase connection node를 직접 제거하고, 실패해도 onDisconnect가 서버에서 정리합니다.
 
   window.addEventListener('pagehide', ()=>{
     releasePhaseAudioLeadership_();
@@ -4697,17 +4682,8 @@ window.guideSave = async function(){
         }catch(e){}
       }
 
-      // 타이핑마다 서버를 부르지 않고 입력이 멈춘 뒤 이벤트형 이름만 갱신
-      if (presenceNameSyncTimer) clearTimeout(presenceNameSyncTimer);
-      presenceNameSyncTimer = setTimeout(async ()=>{
-        if (isStopped || presenceLeaving) return;
-        if (recordRpcOwner_ || cmdWorking_) return;
-        try{
-          const res = await gasCallPromise_('enterPresence', [CLIENT_ID, nm], 10000);
-          presenceRegisteredOnServer = true;
-          if (!firebasePresenceReady) applyServerPresence_(res);
-        }catch(e){}
-      }, 2500);
+      // v4.6.0: 이름 갱신은 위의 Firebase presenceName/connection update가 전부입니다.
+      // (Apps Script enterPresence 재등록 철거 — 서버 복제본이 더 이상 없습니다.)
     });
 
     initLogSizer();
@@ -4744,7 +4720,6 @@ window.guideSave = async function(){
     window.addEventListener('beforeunload', () => {
       presenceLeaving = true;
       try{ if (presenceConnRef) window.FB.remove(presenceConnRef); }catch(e){}
-      sendPresenceLeaveBeacon_();
     });
   });
 

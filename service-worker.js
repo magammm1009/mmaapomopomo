@@ -1,7 +1,7 @@
 // 마끝마 뽀모 PWA Service Worker
-// v4.5.2 — 대시보드용 pomoHub 세션 공개
+// v4.6.0 — Apps Script 완전 철거(세션·접속자·기록 전부 Firebase)
 
-const CACHE_NAME = 'pomo-github-standalone-v4-5-2-20260806-pomohub-v1';
+const CACHE_NAME = 'pomo-github-standalone-v4-6-0-20260806-no-gas-v1';
 const STATIC_ASSETS = [
   './offline.html',
   './manifest.webmanifest',
