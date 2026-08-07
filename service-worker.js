@@ -1,7 +1,7 @@
 // 마끝마 뽀모 PWA Service Worker
-// v4.7.0 — 글자수 챌린지
+// v4.7.1 — 챌린지 하루 시작 시간(dayStartHour)
 
-const CACHE_NAME = 'pomo-github-standalone-v4-7-0-20260807-challenge-v1';
+const CACHE_NAME = 'pomo-github-standalone-v4-7-1-20260807-daystart-v1';
 const STATIC_ASSETS = [
   './offline.html',
   './manifest.webmanifest',

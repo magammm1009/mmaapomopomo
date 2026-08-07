@@ -1,5 +1,5 @@
 <!doctype html>
-<!-- POMO GitHub standalone v4.7.0 / 2026-08-07 / 글자수 챌린지 -->
+<!-- POMO GitHub standalone v4.7.1-daystart / 2026-08-07 / 챌린지 하루 시작 시간(dayStartHour) -->
 <html>
 <head>
   <meta charset="utf-8"/>
@@ -18,7 +18,7 @@
   <script>
   (function(){
     'use strict';
-    const VERSION = 'github-standalone-v4.7.0-challenge-20260807';
+    const VERSION = 'github-standalone-v4.7.1-daystart-20260807';
     const cfg = window.POMO_APP_CONFIG || {};
     const endpoint = String(cfg.POMO_APP_URL || '').trim();
     const isMissing = !endpoint || endpoint.includes('여기에_Apps_Script') || endpoint.includes('YOUR_');
@@ -1085,6 +1085,8 @@
 #chalOverlay .chalHdName{ font-size:16px; font-weight:900; letter-spacing:-.3px; color:#4a3540; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
 #chalOverlay .chalHdDday{ margin-left:auto; background:#ff6fae; color:#fff; font-size:11px; font-weight:800; padding:4px 10px; border-radius:999px; box-shadow:0 2px 6px rgba(232,79,150,.35); flex:0 0 auto; white-space:nowrap; }
 #chalOverlay .chalCloseBtn{ flex:0 0 auto; border:none; background:#fff0f7; color:#d76fa5; width:30px; height:30px; border-radius:10px; cursor:pointer; font-size:14px; font-weight:900; padding:0; }
+/* v4.7.1: 하루 시작 시간(h≠0)일 때 헤더에 기준 표시 */
+#chalOverlay .chalHdHour{ margin-top:5px; font-size:10.5px; font-weight:700; color:#c77ba1; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
 /* ---------- 데이 스트립 ---------- */
 #chalOverlay .chalDayStrip{ display:flex; gap:8px; overflow-x:auto; padding:10px 14px 6px; scrollbar-width:none; flex:0 0 auto; }
 #chalOverlay .chalDayStrip::-webkit-scrollbar{ display:none; }
@@ -1195,6 +1197,9 @@
 #chalOverlay .chalFRow label{ display:block; font-size:11.5px; color:#a8899a; font-weight:700; margin-bottom:5px; }
 #chalOverlay .chalFRow input{ width:100%; border:1.5px solid #ffd1e8; border-radius:12px; padding:10px 12px; font-size:14px; outline:none; color:#4a3540; background:#fff; font-weight:700; }
 #chalOverlay .chalFRow input:focus{ border-color:#ff6fae; }
+/* v4.7.1: 하루 시작 시간 select (input과 동일 톤) */
+#chalOverlay .chalFRow select{ width:100%; border:1.5px solid #ffd1e8; border-radius:12px; padding:10px 12px; font-size:14px; outline:none; color:#4a3540; background:#fff; font-weight:700; }
+#chalOverlay .chalFRow select:focus{ border-color:#ff6fae; }
 #chalOverlay .chalFGrid{ display:grid; grid-template-columns:1fr 1fr; gap:10px; }
 #chalOverlay .chalToggleRow{ display:flex; align-items:center; gap:8px; font-size:12.5px; font-weight:700; color:#4a3540; margin:2px 0 12px; cursor:pointer; user-select:none; }
 #chalOverlay .chalToggleRow input{ width:16px; height:16px; accent-color:#ff6fae; margin:0; }
@@ -1408,6 +1413,7 @@
           <span class="chalHdDday" id="chalHdDday">-</span>
           <button class="chalCloseBtn" id="chalClose" type="button" title="닫기">✕</button>
         </div>
+        <div class="chalHdHour" id="chalHdHour" style="display:none;"></div>
       </div>
       <div class="chalDayStrip" id="chalDayStrip"></div>
       <div class="chalBody">
@@ -1445,6 +1451,7 @@
           <div class="chalJoinCard" id="chalJoinCard" style="display:none;">
             <div class="chalJoinRow"><span>🎯 일일 목표</span><b id="chalJoinGoal">-</b></div>
             <div class="chalJoinRow"><span>📅 기간</span><b id="chalJoinPeriod">-</b></div>
+            <div class="chalJoinRow" id="chalJoinHourRow" style="display:none;"><span>⏰ 하루 기준</span><b id="chalJoinHour">-</b></div>
             <div class="chalJoinRow"><span>👥 참여 중</span><b id="chalJoinCount">0명</b></div>
             <button class="chalBtnPink chalJoinBtn" id="chalJoinBtn" type="button">챌린지 참여하기 🚀</button>
           </div>
@@ -1496,12 +1503,13 @@
                   <div class="chalFRow"><label for="chalSetDays">도전 일수 (1~60)</label><input id="chalSetDays" type="number" min="1" max="60" /></div>
                 </div>
                 <div class="chalFRow"><label for="chalSetStart">시작일</label><input id="chalSetStart" type="date" /></div>
+                <div class="chalFRow"><label for="chalSetHour">하루 시작 시간</label><select id="chalSetHour"></select></div>
                 <label class="chalToggleRow" for="chalSetActive">
                   <input id="chalSetActive" type="checkbox" />
                   <span>진행 중 (끄면 챌린지가 잠시 멈춰요)</span>
                 </label>
                 <button class="chalBtnPink chalBtnFull" id="chalSaveBtn" type="button">설정 저장</button>
-                <div class="chalHint">하루 경계는 기록 시스템과 같은 KST 자정이에요.</div>
+                <div class="chalHint">하루 시작 시간을 바꾸면 챌린지 집계만 그 시각 기준으로 계산돼요 (예: 06시 → 06:00~익일 06:00). 기록 원장과 먼슬리는 계속 KST 자정 기준이에요.</div>
               </div>
               <div class="chalAdminCard">
                 <h3>👥 참여자 관리</h3>
@@ -5321,17 +5329,20 @@ window.guideSave = async function(){
 })();
 </script>
 
-<!-- ✅ v4.7.0 글자수 챌린지: 로직 전체 (기존 코드와 격리된 IIFE) -->
+<!-- ✅ v4.7.0 글자수 챌린지: 로직 전체 (기존 코드와 격리된 IIFE)
+     ✅ v4.7.1: 하루 시작 시간(dayStartHour) — 챌린지 화면 집계만 events(ts) 기준 재계산 -->
 <script>
 (function POMO_CHALLENGE_V1(){
   'use strict';
 
   /* =====================
    * 상수/경로
-   *  - 쓰기: challenge/config, challenge/participants/{pKey},
+   *  - 쓰기: challenge/config(7필드), challenge/participants/{pKey},
    *          admin/config/adminHash(최초 1회), processCommandOnly 호출
-   *  - 구독: challenge/config, challenge/participants, state/{오늘}(활성+기간 내만)
-   *  - get(캐시): days/{월}, events/{일}, adminHash(인증 시)
+   *  - 구독: challenge/config, challenge/participants,
+   *          h=0 → state/{오늘} 1개 (활성+기간 내만, v4.7.0과 동일)
+   *          h≠0 → 현재 챌린지 하루 window와 겹치는 캘린더 날짜의 events/{일} (최대 2개)
+   *  - get(캐시): days/{월}, events/{일}(지난 날짜는 세션 영구), adminHash(인증 시)
    * ===================== */
   var ROOT = 'pomoRecords';
   var CONFIG_PATH = ROOT + '/challenge/config';
@@ -5339,6 +5350,7 @@ window.guideSave = async function(){
   var ADMIN_HASH_PATH = ROOT + '/admin/config/adminHash';
   var CELEB_LS_KEY = 'CHAL_CELEB_V1';
   var DAY_MS = 86400000;
+  var HOUR_MS = 3600000;
   var KST_MS = 9 * 3600 * 1000;
   var RING_C = 2 * Math.PI * 96;
   var QUICK_AMOUNTS = [100, 300, 500, 1000];
@@ -5363,6 +5375,31 @@ window.guideSave = async function(){
     return new Date(Date.now() + KST_MS).toISOString().slice(0, 10);
   }
   function isDayKey(s){ return /^\d{4}-\d{2}-\d{2}$/.test(String(s || '')); }
+  function pad2(n){ return String(n).padStart(2, '0'); }
+  /* ---------- v4.7.1: 챌린지 하루(dayStartHour) 유틸 ----------
+   * h=0(자정)이면 기존 경로 그대로. h≠0이면 챌린지 하루 D = [D일 h:00 KST, D+1일 h:00 KST) */
+  function cfgHour(c){
+    var v = Math.floor(Number((c || S.cfg) && (c || S.cfg).dayStartHour));
+    return (v >= 1 && v <= 23) ? v : 0;
+  }
+  function hourRangeLabel(h){ return pad2(h) + ':00 ~ 익일 ' + pad2(h) + ':00'; }
+  function challengeDayOf(tsMs){
+    return new Date(Number(tsMs) + KST_MS - cfgHour() * HOUR_MS).toISOString().slice(0, 10);
+  }
+  function chalTodayKey(){
+    return cfgHour() === 0 ? kstTodayKey() : challengeDayOf(Date.now());
+  }
+  function windowOf(dayKey){
+    var start = Date.parse(dayKey + 'T00:00:00Z') - KST_MS + cfgHour() * HOUR_MS;
+    return { start: start, end: start + DAY_MS };
+  }
+  /* 챌린지 하루 dayKey와 겹치고 이미 시작된 캘린더 날짜 (h≠0: 최대 2개) */
+  function calDaysOf(dayKey){
+    var days = [dayKey];
+    var nx = addDays(dayKey, 1);
+    if (nx <= kstTodayKey()) days.push(nx);
+    return days;
+  }
   function addDays(dayKey, n){ return new Date(Date.parse(dayKey) + n * DAY_MS).toISOString().slice(0, 10); }
   function dayDiff(a, b){ return Math.round((Date.parse(a) - Date.parse(b)) / DAY_MS); }
   function monthOf(dayKey){ return String(dayKey).slice(0, 7); }
@@ -5413,7 +5450,8 @@ window.guideSave = async function(){
     daysCache: {},        // monthKey -> {at, val}
     eventsCache: {}       // dayKey -> {at, val}
   };
-  var subState = null;    // { day, un }
+  var subState = null;    // h=0: { day, un }
+  var subEvents = null;   // v4.7.1 h≠0: { key, chalDay, days, vals, ready, uns }
   var tickRate = {};      // 병합닉네임 -> 마지막 티커 증가 라인 ts
 
   function cfgValid(c){
@@ -5463,11 +5501,13 @@ window.guideSave = async function(){
     return S.myTotalsByDay[dayKey] || 0;
   }
 
-  /* ---------- 다운로드 절약형 get 캐시 (days/{월}, events/{일}) ---------- */
+  /* ---------- 다운로드 절약형 get 캐시 (days/{월}, events/{일}) ----------
+   * v4.7.1: ttlMs=Infinity면 세션 영구 캐시 (지난 캘린더 날짜 events는 불변) */
   var pendingGets = {};
-  function cachedGet(path, cacheObj, key){
+  function cachedGet(path, cacheObj, key, ttlMs){
+    var ttl = (ttlMs == null) ? GET_CACHE_TTL : ttlMs;
     var c = cacheObj[key];
-    if (c && Date.now() - c.at < GET_CACHE_TTL) return Promise.resolve(c.val);
+    if (c && (ttl === Infinity || Date.now() - c.at < ttl)) return Promise.resolve(c.val);
     if (pendingGets[path]) return pendingGets[path];
     var FBH = window.FB;
     var p = Promise.resolve(FBH.get(FBH.ref(FBH.db, path))).then(function(snap){
@@ -5483,11 +5523,84 @@ window.guideSave = async function(){
     return p;
   }
   function getDaysMonth(monthKey){ return cachedGet(ROOT + '/days/' + monthKey, S.daysCache, monthKey); }
-  function getEventsDay(dayKey){ return cachedGet(ROOT + '/events/' + dayKey, S.eventsCache, dayKey); }
+  function getEventsDay(dayKey){
+    return cachedGet(ROOT + '/events/' + dayKey, S.eventsCache, dayKey,
+      dayKey < kstTodayKey() ? Infinity : GET_CACHE_TTL);
+  }
+  /* v4.7.1: 구독 중인 캘린더 날짜는 라이브 값을 그대로 쓴다 (get 절약) */
+  function eventsForCalDay(dayKey){
+    if (subEvents && subEvents.ready[dayKey]) return Promise.resolve(subEvents.vals[dayKey] || {});
+    return getEventsDay(dayKey);
+  }
+  /* ---------- v4.7.1: 감사로그(events) 재생 (h≠0 전용) ----------
+   * 챌린지 하루 window 안의 이벤트만, 슬롯별 ts 오름차순으로 엔진과 동일 클램프 재생.
+   * delta/snapshot/manual_current → running=max(0,running+delta) · reset/manual_base → 0 · 그 외 무시 */
+  function replayTotals(chalDay, dayVals){
+    var C = core(), out = {};
+    if (!C) return out;
+    var w = windowOf(chalDay);
+    var bySlot = {};
+    dayVals.forEach(function(ev){
+      Object.keys(ev || {}).forEach(function(pid){
+        var e = ev[pid] || {};
+        var ts = Number(e.ts) || 0;
+        if (ts < w.start || ts >= w.end) return;
+        var nm = C.normalizeName(String(e.name || ''));
+        if (!nm) return;
+        var slot = C.slotKey(nm);
+        if (!slot) return;
+        if (!bySlot[slot]) bySlot[slot] = { name: nm, list: [] };
+        bySlot[slot].list.push({ ts: ts, pid: pid, type: String(e.type || ''), delta: Number(e.delta) || 0 });
+      });
+    });
+    Object.keys(bySlot).forEach(function(slot){
+      var g = bySlot[slot];
+      g.list.sort(function(a, b){
+        return (a.ts - b.ts) || (a.pid < b.pid ? -1 : a.pid > b.pid ? 1 : 0);
+      });
+      var running = 0;
+      g.list.forEach(function(e){
+        if (e.type === 'delta' || e.type === 'snapshot' || e.type === 'manual_current'){
+          running = Math.max(0, running + e.delta);
+        } else if (e.type === 'reset' || e.type === 'manual_base'){
+          running = 0;
+        }
+      });
+      var base = C.normalizeName(C.displayBaseName(g.name));
+      if (!base) return;
+      out[base] = (out[base] || 0) + running;
+    });
+    return out;
+  }
   function totalsForDay(dayKey){
-    if (dayKey === S.today && S.stateToday) return Promise.resolve(mergedTotals(S.stateToday));
-    return getDaysMonth(monthOf(dayKey)).then(function(m){
-      return mergedTotals((m && m[dayKey]) || {});
+    if (cfgHour() === 0){
+      if (dayKey === S.today && S.stateToday) return Promise.resolve(mergedTotals(S.stateToday));
+      return getDaysMonth(monthOf(dayKey)).then(function(m){
+        return mergedTotals((m && m[dayKey]) || {});
+      });
+    }
+    return Promise.all(calDaysOf(dayKey).map(eventsForCalDay)).then(function(vals){
+      return replayTotals(dayKey, vals);
+    });
+  }
+  /* v4.7.1: 기록 리스트용 이벤트 목록 (h=0: 캘린더 하루 그대로 · h≠0: window 필터) */
+  function fetchChalDayEvents(dayKey){
+    if (cfgHour() === 0){
+      return getEventsDay(dayKey).then(function(ev){
+        return Object.keys(ev || {}).map(function(pid){ return ev[pid] || {}; });
+      });
+    }
+    var w = windowOf(dayKey);
+    return Promise.all(calDaysOf(dayKey).map(eventsForCalDay)).then(function(vals){
+      var items = [];
+      vals.forEach(function(ev){
+        Object.keys(ev || {}).forEach(function(pid){
+          var e = ev[pid] || {};
+          var ts = Number(e.ts) || 0;
+          if (ts >= w.start && ts < w.end) items.push(e);
+        });
+      });
+      return items;
     });
   }
   function refreshMyHistory(){
@@ -5497,6 +5610,22 @@ window.guideSave = async function(){
     var end = addDays(c.startDate, Number(c.days) - 1);
     var last = end < S.today ? end : S.today;
     if (last < c.startDate){ S.myTotalsByDay = {}; return Promise.resolve(); }
+    if (cfgHour() !== 0){
+      // v4.7.1: 챌린지 하루별 이벤트 재생 (지난 캘린더 날짜 events는 세션 영구 캐시)
+      var dayKeys = [];
+      for (var j = 0; j < Number(c.days); j++){
+        var dj = addDays(c.startDate, j);
+        if (dj > last) break;
+        dayKeys.push(dj);
+      }
+      return Promise.all(dayKeys.map(totalsForDay)).then(function(list){
+        var map = {};
+        list.forEach(function(totals, idx){
+          if (me && totals && totals[me] != null) map[dayKeys[idx]] = totals[me];
+        });
+        S.myTotalsByDay = map;
+      }).catch(function(){});
+    }
     var months = {};
     for (var i = 0; i < Number(c.days); i++){
       var dk = addDays(c.startDate, i);
@@ -5516,29 +5645,76 @@ window.guideSave = async function(){
     }).catch(function(){});
   }
 
-  /* ---------- state/{오늘} 구독 관리 (활성 + 기간 내에서만 1개) ---------- */
-  function ensureStateSub(){
+  /* ---------- 실시간 구독 관리 (활성 + 기간 내에서만) ----------
+   * h=0 : state/{오늘} 1개 (v4.7.0 경로 그대로 — 회귀 금지)
+   * h≠0 : 현재 챌린지 하루 window와 겹치는 캘린더 날짜 events/{일} 구독 (최대 2개) */
+  function eventsSubDays(){
+    var days = [S.today];
+    var cal = kstTodayKey();
+    if (cal !== S.today) days.push(cal);
+    return days;
+  }
+  function ensureLiveSub(){
     var want = challengeLive();
-    if (subState && subState.day === S.today && want) return;
-    if (subState){
+    var h = cfgHour();
+    var wantState = want && h === 0;
+    var wantEvents = want && h !== 0;
+    if (subState && (!wantState || subState.day !== S.today)){
       try{ subState.un(); }catch(e){}
       subState = null;
       S.stateToday = null;
       S.prevTotals = null;
     }
-    if (!want) return;
-    var FBH = window.FB;
-    var day = S.today;
-    var un = FBH.onValue(FBH.ref(FBH.db, ROOT + '/state/' + day), function(snap){
-      if (!subState || subState.day !== day) return;
-      var val = (snap && typeof snap.val === 'function') ? (snap.val() || {}) : {};
-      handleStateSnapshot(val);
-    }, function(){});
-    subState = { day: day, un: un };
+    var evKey = S.today + '|' + eventsSubDays().join(',');
+    if (subEvents && (!wantEvents || subEvents.key !== evKey)){
+      subEvents.uns.forEach(function(un){ try{ un(); }catch(e){} });
+      subEvents = null;
+      S.prevTotals = null;
+    }
+    if (wantState && !subState){
+      var FBH = window.FB;
+      var day = S.today;
+      var un = FBH.onValue(FBH.ref(FBH.db, ROOT + '/state/' + day), function(snap){
+        if (!subState || subState.day !== day) return;
+        var val = (snap && typeof snap.val === 'function') ? (snap.val() || {}) : {};
+        handleStateSnapshot(val);
+      }, function(){});
+      subState = { day: day, un: un };
+    }
+    if (wantEvents && !subEvents){
+      var FBH2 = window.FB;
+      var sub = { key: evKey, chalDay: S.today, days: eventsSubDays(), vals: {}, ready: {}, uns: [] };
+      subEvents = sub;
+      sub.days.forEach(function(dk){
+        var un2 = FBH2.onValue(FBH2.ref(FBH2.db, ROOT + '/events/' + dk), function(snap){
+          if (subEvents !== sub) return;
+          var val = (snap && typeof snap.val === 'function') ? (snap.val() || {}) : {};
+          sub.vals[dk] = val;
+          sub.ready[dk] = true;
+          S.eventsCache[dk] = { at: Date.now(), val: val }; // 라이브 값으로 get 캐시도 신선하게
+          handleEventsSnapshot(sub);
+        }, function(){
+          if (subEvents !== sub || sub.ready[dk]) return;
+          sub.vals[dk] = {};
+          sub.ready[dk] = true;
+          handleEventsSnapshot(sub);
+        });
+        sub.uns.push(un2);
+      });
+    }
+  }
+  function handleEventsSnapshot(sub){
+    for (var i = 0; i < sub.days.length; i++){
+      if (!sub.ready[sub.days[i]]) return; // 모든 날짜 첫 스냅샷이 온 뒤 한 번에 반영
+    }
+    applyTotals(replayTotals(sub.chalDay, sub.days.map(function(dk){ return sub.vals[dk] || {}; })));
   }
   function handleStateSnapshot(val){
     S.stateToday = val;
-    var totals = mergedTotals(val);
+    applyTotals(mergedTotals(val));
+  }
+  /* v4.7.1: totals 이후 공통 로직 (티커 증가/타인 달성/팡파레/렌더) — state·events 양쪽에서 재사용 */
+  function applyTotals(totals){
     var prev = S.prevTotals;
     S.prevTotals = totals;
     var goal = Number(S.cfg && S.cfg.dailyGoal) || 0;
@@ -5650,19 +5826,24 @@ window.guideSave = async function(){
     });
   }
 
-  /* ---------- 자정/구독 상태 점검 (60초) ---------- */
+  /* ---------- 하루 경계/구독 상태 점검 (60초) ----------
+   * v4.7.1: S.today = "현재 챌린지 하루 키" (h=0이면 기존 kstTodayKey()와 동일값) */
+  function syncToday(){
+    var nowDay = chalTodayKey();
+    if (nowDay === S.today) return false;
+    var prevToday = S.today;
+    S.today = nowDay;
+    tickRate = {};
+    stopTicker();
+    if (S.selDay === prevToday) S.selDay = nowDay;
+    return true;
+  }
   function minuteTick(){
-    var nowDay = kstTodayKey();
-    if (nowDay !== S.today){
-      var prevToday = S.today;
-      S.today = nowDay;
-      tickRate = {};
-      stopTicker();
-      if (S.selDay === prevToday) S.selDay = nowDay;
-      ensureStateSub();
+    if (syncToday()){
+      ensureLiveSub();
       renderAll();
     } else {
-      ensureStateSub();
+      ensureLiveSub(); // 캘린더 자정에 구독 대상 캘린더 날짜(최대 2개)도 여기서 갱신된다
     }
     if (challengeLive()) pushRankTicker();
     if (S.open){
@@ -5672,7 +5853,7 @@ window.guideSave = async function(){
         if (S.view === 'today'){
           renderGauge();
           // 채팅/직접입력으로 쌓인 기록도 리스트에 보이게 1분 주기로만 새로 읽는다
-          if (S.selDay === S.today){ delete S.eventsCache[S.today]; renderLogList(); }
+          if (S.selDay === S.today){ delete S.eventsCache[kstTodayKey()]; renderLogList(); }
         }
         if (S.view === 'history') paintHistory();
       });
@@ -5712,6 +5893,16 @@ window.guideSave = async function(){
     byId('chalHdName').textContent =
       (cfgValid(c) && String(c.name || '').trim()) ? String(c.name).trim() : '글자수 챌린지';
     byId('chalHdDday').textContent = ddayLabel();
+    var hh = byId('chalHdHour');
+    if (hh){
+      var h = cfgHour();
+      if (cfgValid(c) && h !== 0){
+        hh.style.display = '';
+        hh.textContent = '⏰ 하루 기준 ' + hourRangeLabel(h);
+      } else {
+        hh.style.display = 'none';
+      }
+    }
     renderDayStrip();
     renderView();
   }
@@ -5815,6 +6006,12 @@ window.guideSave = async function(){
       byId('chalJoinGoal').textContent = fmtN(c.dailyGoal) + '자';
       byId('chalJoinPeriod').textContent =
         mdLabel(c.startDate) + ' ~ ' + mdLabel(addDays(c.startDate, Number(c.days) - 1)) + ' (' + c.days + '일)';
+      var jh = byId('chalJoinHourRow');
+      if (jh){
+        var jhH = cfgHour();
+        jh.style.display = jhH !== 0 ? '' : 'none';
+        if (jhH !== 0) byId('chalJoinHour').textContent = hourRangeLabel(jhH);
+      }
       byId('chalJoinCount').textContent = partCount() + '명';
       return;
     }
@@ -5846,13 +6043,12 @@ window.guideSave = async function(){
     }
     var dk = S.selDay;
     var token = ++logToken;
-    getEventsDay(dk).then(function(ev){
+    fetchChalDayEvents(dk).then(function(all){
       if (token !== logToken || !S.open || S.view !== 'today' || S.selDay !== dk) return;
       var C = core();
       if (!C) return;
       var items = [];
-      Object.keys(ev || {}).forEach(function(pid){
-        var e = ev[pid] || {};
+      all.forEach(function(e){
         var base = C.normalizeName(C.displayBaseName(String(e.name || '')));
         if (base === me) items.push(e);
       });
@@ -5964,6 +6160,7 @@ window.guideSave = async function(){
       byId('chalSetGoal').value = (c.dailyGoal != null) ? String(c.dailyGoal) : '3000';
       byId('chalSetDays').value = (c.days != null) ? String(c.days) : '14';
       byId('chalSetStart').value = isDayKey(c.startDate) ? c.startDate : S.today;
+      byId('chalSetHour').value = String(cfgHour(c));
       byId('chalSetActive').checked = (c.active === undefined) ? true : !!c.active;
     }
     var parts = S.parts || {};
@@ -6012,7 +6209,7 @@ window.guideSave = async function(){
         toast(res.sysText);
         var inp = byId('chalAmtInput');
         if (inp) inp.value = '';
-        delete S.eventsCache[S.today];
+        delete S.eventsCache[kstTodayKey()]; // 새 이벤트는 캘린더 오늘 노드에 쌓인다
         setTimeout(renderLogList, 700);
       } else if (res && res.ok === false){
         toast(res.message || '기록하지 못했어요. 잠시 후 다시 시도해 주세요.');
@@ -6102,10 +6299,13 @@ window.guideSave = async function(){
     days = Math.min(60, Math.max(1, days));
     var start = String(byId('chalSetStart').value || '');
     if (!isDayKey(start)){ toast('시작일을 선택해 주세요!'); return; }
+    var hour = parseInt(byId('chalSetHour').value, 10);
+    if (!(hour >= 0 && hour <= 23)) hour = 0;
     var active = !!byId('chalSetActive').checked;
     var FBH = window.FB;
+    // RTDB 규칙이 아는 7필드만 정확히 보낸다 (dayStartHour: 0~23 정수)
     Promise.resolve(FBH.set(FBH.ref(FBH.db, CONFIG_PATH), {
-      name: name, dailyGoal: goal, days: days, startDate: start, active: active, updatedAt: Date.now()
+      name: name, dailyGoal: goal, days: days, startDate: start, active: active, dayStartHour: hour, updatedAt: Date.now()
     })).then(function(){
       S.selDay = null;
       lastStripSel = null;
@@ -6394,6 +6594,15 @@ window.guideSave = async function(){
       renderAdmin();
       toast('관리자 잠금 🔒');
     });
+    var hourSel = byId('chalSetHour');
+    if (hourSel && !hourSel.options.length){
+      for (var hi = 0; hi < 24; hi++){
+        var opt = document.createElement('option');
+        opt.value = String(hi);
+        opt.textContent = hi === 0 ? '00시 (자정 · 기본)' : (pad2(hi) + '시 (' + hourRangeLabel(hi) + ')');
+        hourSel.appendChild(opt);
+      }
+    }
     var saveBtn = byId('chalSaveBtn');
     if (saveBtn) saveBtn.addEventListener('click', saveConfig);
     var manage = byId('chalManageList');
@@ -6436,7 +6645,8 @@ window.guideSave = async function(){
       var FBH = window.FB;
       FBH.onValue(FBH.ref(FBH.db, CONFIG_PATH), function(snap){
         S.cfg = (snap && typeof snap.val === 'function') ? snap.val() : null;
-        ensureStateSub();
+        syncToday(); // dayStartHour가 바뀌면 "현재 챌린지 하루"부터 다시 맞춘다
+        ensureLiveSub();
         if (!challengeLive()) stopTicker();
         ensureSelDay();
         renderAll();
