@@ -1,5 +1,5 @@
 <!doctype html>
-<!-- POMO GitHub standalone v4.6.0 / 2026-08-06 / Apps Script 완전 철거 — 세션·접속자·기록 전부 Firebase -->
+<!-- POMO GitHub standalone v4.7.0 / 2026-08-07 / 글자수 챌린지 -->
 <html>
 <head>
   <meta charset="utf-8"/>
@@ -18,7 +18,7 @@
   <script>
   (function(){
     'use strict';
-    const VERSION = 'github-standalone-v4.6.0-no-gas-20260806';
+    const VERSION = 'github-standalone-v4.7.0-challenge-20260807';
     const cfg = window.POMO_APP_CONFIG || {};
     const endpoint = String(cfg.POMO_APP_URL || '').trim();
     const isMissing = !endpoint || endpoint.includes('여기에_Apps_Script') || endpoint.includes('YOUR_');
@@ -1034,6 +1034,211 @@
 }
 
 </style>
+<!-- ✅ v4.7.0 글자수 챌린지 전용 스타일 (chal 네임스페이스만 사용, 기존 룰 수정 없음) -->
+<style id="chalStyle">
+/* ---------- 상단 진입 버튼 ---------- */
+.chalTopBtn{ min-width:auto; position:relative; font-size:15px; padding:7px 9px; }
+.chalTopBtn.chalHasBadge::after{
+  content:''; position:absolute; top:-3px; right:-3px; width:10px; height:10px;
+  border-radius:50%; background:#ff6fae; border:2px solid #fff;
+  box-shadow:0 1px 4px rgba(232,79,150,.45);
+}
+/* ---------- 타이머 티커 ---------- */
+.card.timer{ position:relative; }
+#chalTicker{
+  position:absolute; right:10px; top:6px; bottom:6px; width:150px;
+  overflow:hidden; pointer-events:none; z-index:2;
+}
+@media (max-width:619px){ #chalTicker{ display:none; } }
+.chalTickItem{
+  position:absolute; left:0; right:0;
+  font-size:11px; font-weight:800; line-height:1.25;
+  color:#7b214e; background:rgba(255,227,241,.9); border:1px solid rgba(242,215,234,.95);
+  border-radius:999px; padding:4px 9px;
+  white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
+  opacity:0; animation:chalTickFloat 6s ease-out forwards;
+}
+.chalTickItem.chalTickGoal{ background:rgba(255,240,196,.92); border-color:#ffe8b0; color:#a5802e; }
+.chalTickItem.chalTickUp{ background:rgba(223,250,243,.92); border-color:#c9f3ea; color:#1f6f5c; }
+@keyframes chalTickFloat{
+  0%{opacity:0; transform:translateY(14px);}
+  12%{opacity:.75; transform:translateY(6px);}
+  75%{opacity:.68; transform:translateY(-8px);}
+  100%{opacity:0; transform:translateY(-18px);}
+}
+/* ---------- 모달 공통 ---------- */
+#chalOverlay{
+  position:fixed; inset:0; z-index:1200; display:none; align-items:center; justify-content:center;
+  padding:14px; background:rgba(74,53,64,.42);
+}
+#chalOverlay.on{ display:flex; }
+#chalOverlay .chalCard{
+  width:min(430px,100%); height:min(88vh,760px); height:min(88dvh,760px);
+  background:#fffbfd; border:1px solid #ffd9ea; border-radius:24px;
+  box-shadow:0 18px 50px rgba(232,79,150,.25);
+  display:flex; flex-direction:column; overflow:hidden;
+}
+#chalOverlay button{ min-width:0; }
+/* ---------- 헤더 ---------- */
+#chalOverlay .chalHead{ padding:14px 16px 11px; background:linear-gradient(180deg,#ffe9f4,#fffbfd); border-bottom:1px solid #ffe3f0; flex:0 0 auto; }
+#chalOverlay .chalHeadTop{ display:flex; align-items:center; gap:8px; }
+#chalOverlay .chalHdName{ font-size:16px; font-weight:900; letter-spacing:-.3px; color:#4a3540; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+#chalOverlay .chalHdDday{ margin-left:auto; background:#ff6fae; color:#fff; font-size:11px; font-weight:800; padding:4px 10px; border-radius:999px; box-shadow:0 2px 6px rgba(232,79,150,.35); flex:0 0 auto; white-space:nowrap; }
+#chalOverlay .chalCloseBtn{ flex:0 0 auto; border:none; background:#fff0f7; color:#d76fa5; width:30px; height:30px; border-radius:10px; cursor:pointer; font-size:14px; font-weight:900; padding:0; }
+/* ---------- 데이 스트립 ---------- */
+#chalOverlay .chalDayStrip{ display:flex; gap:8px; overflow-x:auto; padding:10px 14px 6px; scrollbar-width:none; flex:0 0 auto; }
+#chalOverlay .chalDayStrip::-webkit-scrollbar{ display:none; }
+#chalOverlay .chalDayChip{ flex:0 0 auto; min-width:52px; padding:6px 10px; border-radius:14px; text-align:center; cursor:pointer; background:#fff; border:1.5px solid #ffe3f0; user-select:none; transition:.15s; }
+#chalOverlay .chalDayChip .chalDn{ font-size:11px; font-weight:800; color:#e84f96; white-space:nowrap; }
+#chalOverlay .chalDayChip .chalDd{ font-size:10px; color:#a8899a; margin-top:1px; }
+#chalOverlay .chalDayChip .chalDot{ width:6px; height:6px; border-radius:50%; margin:4px auto 0; background:#ffd9ea; }
+#chalOverlay .chalDayChip.done .chalDot{ background:#ffc94d; }
+#chalOverlay .chalDayChip.partial .chalDot{ background:#ff6fae; }
+#chalOverlay .chalDayChip.sel{ background:linear-gradient(135deg,#ff8fc7,#ff6fae); border-color:transparent; box-shadow:0 4px 10px rgba(232,79,150,.3); }
+#chalOverlay .chalDayChip.sel .chalDn, #chalOverlay .chalDayChip.sel .chalDd{ color:#fff; }
+#chalOverlay .chalDayChip.sel .chalDot{ background:#fff; }
+#chalOverlay .chalDayChip.locked{ opacity:.45; cursor:default; filter:grayscale(.4); }
+#chalOverlay .chalDayChip.today{ outline:2px dashed #ffb0d4; outline-offset:2px; }
+/* ---------- 본문/뷰 ---------- */
+#chalOverlay .chalBody{ flex:1 1 auto; min-height:0; display:flex; flex-direction:column; padding:6px 14px 10px; }
+#chalOverlay .chalView{ display:none; flex:1 1 auto; min-height:0; flex-direction:column; animation:chalFadeIn .22s ease; }
+#chalOverlay .chalView.on{ display:flex; }
+@keyframes chalFadeIn{ from{opacity:0; transform:translateY(6px);} to{opacity:1; transform:none;} }
+#chalOverlay .chalEmpty{ flex:1; display:flex; align-items:center; justify-content:center; text-align:center; color:#a8899a; font-size:13.5px; font-weight:700; line-height:1.8; }
+#chalOverlay .chalEmptyMini{ color:#a8899a; font-size:12.5px; text-align:center; padding:16px 0; font-weight:700; }
+/* ---------- 게이지 ---------- */
+#chalOverlay .chalGaugeDayLabel{ text-align:center; font-size:12.5px; color:#a8899a; margin-top:2px; flex:0 0 auto; font-weight:700; }
+#chalOverlay .chalGaugeDayLabel b{ color:#e84f96; }
+#chalOverlay .chalGaugeWrap{ position:relative; width:190px; margin:6px auto 2px; flex:0 0 auto; }
+#chalOverlay .chalGaugeWrap svg{ width:100%; display:block; }
+#chalOverlay .chalRingTrack{ stroke:#ffe3f0; }
+#chalOverlay .chalRingProg{ stroke:url(#chalGradPink); transition:stroke-dashoffset .7s cubic-bezier(.22,1,.36,1); filter:drop-shadow(0 0 4px rgba(255,111,174,.35)); }
+#chalOverlay .chalRingProg.gold{ stroke:url(#chalGradGold); filter:drop-shadow(0 0 7px rgba(255,201,77,.6)); }
+#chalOverlay .chalRingProg.rainbow{ stroke:url(#chalGradGold); animation:chalHueSpin 2.2s linear infinite; filter:drop-shadow(0 0 9px rgba(255,160,80,.8)); }
+@keyframes chalHueSpin{ from{filter:hue-rotate(0) drop-shadow(0 0 9px rgba(255,160,80,.8));} to{filter:hue-rotate(360deg) drop-shadow(0 0 9px rgba(255,160,80,.8));} }
+#chalOverlay .chalGaugeCenter{ position:absolute; inset:0; display:flex; flex-direction:column; align-items:center; justify-content:center; text-align:center; }
+#chalOverlay .chalGcCount{ font-size:30px; font-weight:900; letter-spacing:-1px; line-height:1; color:#4a3540; }
+#chalOverlay .chalGcGoal{ font-size:11.5px; color:#a8899a; margin-top:4px; font-weight:700; }
+#chalOverlay .chalGcPct{ margin-top:7px; font-size:11.5px; font-weight:800; color:#fff; background:#ff6fae; padding:3px 11px; border-radius:999px; }
+#chalOverlay .chalGcPct.gold{ background:linear-gradient(135deg,#ffc94d,#ff9d3c); }
+#chalOverlay .chalGcPct.rainbow{ background:linear-gradient(90deg,#ff6fae,#ffb37e,#ffd76a,#8fd8ff,#c79bff); background-size:300% 100%; animation:chalRbSlide 2s linear infinite; }
+@keyframes chalRbSlide{ to{background-position:300% 0;} }
+#chalOverlay .chalGaugePulse{ animation:chalGPulse .5s ease; }
+@keyframes chalGPulse{ 40%{transform:scale(1.045);} }
+/* ---------- 입력줄/퀵칩 ---------- */
+#chalOverlay .chalInputArea{ flex:0 0 auto; margin-top:8px; }
+#chalOverlay .chalChips{ display:flex; gap:7px; justify-content:center; margin:4px 0 8px; flex-wrap:wrap; }
+#chalOverlay .chalChip{ background:#fff; border:1.5px solid #ffd1e8; color:#e84f96; font-weight:800; font-size:12.5px; padding:7px 12px; border-radius:999px; cursor:pointer; transition:.12s; }
+#chalOverlay .chalChip:active{ transform:scale(.94); background:#ffe3f0; }
+#chalOverlay .chalAddRow{ display:flex; gap:8px; }
+#chalOverlay .chalAddRow input{ flex:1; min-width:0; width:auto; border:1.5px solid #ffd1e8; border-radius:14px; padding:11px 13px; font-size:14px; background:#fff; outline:none; color:#4a3540; font-weight:700; }
+#chalOverlay .chalAddRow input:focus{ border-color:#ff6fae; }
+#chalOverlay .chalBtnPink{ border:none; border-radius:14px; padding:11px 16px; font-size:13.5px; font-weight:900; cursor:pointer; background:linear-gradient(135deg,#ff8fc7,#ff6fae); color:#fff; box-shadow:0 4px 10px rgba(232,79,150,.3); transition:.12s; }
+#chalOverlay .chalBtnPink:active{ transform:scale(.96); }
+#chalOverlay .chalBtnPink:disabled{ opacity:.55; cursor:not-allowed; }
+#chalOverlay .chalBtnGhost{ background:#fff; border:1.5px solid #ffd1e8; color:#e84f96; border-radius:14px; padding:11px 16px; font-size:13.5px; font-weight:900; cursor:pointer; }
+#chalOverlay .chalBtnFull{ width:100%; }
+#chalOverlay .chalInputArea.isDisabled .chalChip,
+#chalOverlay .chalInputArea.isDisabled input,
+#chalOverlay .chalInputArea.isDisabled .chalBtnPink{ opacity:.5; pointer-events:none; }
+#chalOverlay .chalInputNote{ text-align:center; font-size:11px; color:#a8899a; font-weight:700; margin-top:7px; line-height:1.5; }
+/* ---------- 참여 카드 ---------- */
+#chalOverlay .chalJoinCard{ flex:0 0 auto; margin-top:8px; background:#fff; border:1px solid #ffe3f0; border-radius:18px; padding:13px; box-shadow:0 8px 24px rgba(232,79,150,.08); }
+#chalOverlay .chalJoinRow{ display:flex; justify-content:space-between; font-size:12.5px; padding:4px 2px; color:#4a3540; font-weight:600; }
+#chalOverlay .chalJoinRow b{ color:#e84f96; }
+#chalOverlay .chalJoinBtn{ width:100%; margin-top:8px; padding:13px; font-size:14px; border-radius:16px; }
+/* ---------- 기록 리스트(오늘 탭 스크롤 영역) ---------- */
+#chalOverlay .chalLogHead{ flex:0 0 auto; font-size:12.5px; color:#a8899a; font-weight:800; margin:10px 2px 6px; }
+#chalOverlay .chalLogList{ flex:1 1 auto; min-height:60px; overflow-y:auto; -webkit-overflow-scrolling:touch; padding-bottom:4px; }
+#chalOverlay .chalLogItem{ display:flex; align-items:center; gap:10px; background:#fff; border:1px solid #ffe9f4; border-radius:14px; padding:9px 12px; margin-bottom:6px; }
+#chalOverlay .chalLogAmt{ font-weight:800; font-size:13.5px; color:#e84f96; }
+#chalOverlay .chalLogAmt.minus{ color:#8a7dcf; }
+#chalOverlay .chalLogTime{ margin-left:auto; font-size:11px; color:#a8899a; font-weight:700; }
+#chalOverlay .chalLogSys{ text-align:center; font-size:11.5px; color:#a8899a; font-weight:700; padding:4px 0 8px; }
+/* ---------- 현황 ---------- */
+#chalOverlay .chalSectionTitle{ flex:0 0 auto; font-size:14.5px; font-weight:900; margin:6px 2px 10px; color:#4a3540; }
+#chalOverlay .chalSectionSub{ font-size:11px; color:#a8899a; font-weight:600; }
+#chalOverlay .chalSumRow{ flex:0 0 auto; display:flex; gap:8px; margin:0 0 12px; }
+#chalOverlay .chalSumCard{ flex:1; background:#fff; border:1px solid #ffe9f4; border-radius:16px; padding:11px 6px; text-align:center; min-width:0; }
+#chalOverlay .chalSumV{ font-size:17px; font-weight:900; color:#e84f96; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+#chalOverlay .chalSumK{ font-size:10.5px; color:#a8899a; margin-top:3px; font-weight:700; }
+#chalOverlay .chalBoardList{ flex:1 1 auto; min-height:0; overflow-y:auto; -webkit-overflow-scrolling:touch; }
+#chalOverlay .chalPRow{ display:flex; align-items:center; gap:10px; background:#fff; border:1px solid #ffe9f4; border-radius:16px; padding:10px 12px; margin-bottom:8px; }
+#chalOverlay .chalPRow.me{ border:1.5px solid #ff6fae; box-shadow:0 3px 8px rgba(232,79,150,.12); }
+#chalOverlay .chalPRank{ width:24px; text-align:center; font-size:14px; flex:0 0 auto; font-weight:800; color:#a8899a; }
+#chalOverlay .chalAvatar{ width:34px; height:34px; border-radius:50%; display:flex; align-items:center; justify-content:center; font-weight:800; color:#fff; font-size:14px; flex:0 0 auto; }
+#chalOverlay .chalPInfo{ flex:1; min-width:0; }
+#chalOverlay .chalPName{ font-size:13px; font-weight:800; color:#4a3540; display:flex; align-items:center; gap:5px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+#chalOverlay .chalPBadge{ font-size:10px; }
+#chalOverlay .chalPBar{ display:block; height:8px; background:#ffeef6; border-radius:99px; margin-top:6px; overflow:hidden; }
+#chalOverlay .chalPBar i{ display:block; height:100%; border-radius:99px; background:linear-gradient(90deg,#ff8fc7,#ff6fae); transition:width .5s ease; }
+#chalOverlay .chalPBar i.gold{ background:linear-gradient(90deg,#ffc94d,#ff9d3c); }
+#chalOverlay .chalPNum{ text-align:right; flex:0 0 auto; }
+#chalOverlay .chalPNumA{ font-size:12.5px; font-weight:800; color:#4a3540; }
+#chalOverlay .chalPNumP{ font-size:10.5px; color:#a8899a; font-weight:700; }
+/* ---------- 기록(그리드) ---------- */
+#chalOverlay .chalHistScroll{ flex:1 1 auto; min-height:0; overflow-y:auto; -webkit-overflow-scrolling:touch; }
+#chalOverlay .chalHistGrid{ display:grid; grid-template-columns:repeat(7,1fr); gap:7px; margin:2px 0 12px; }
+#chalOverlay .chalHCell{ aspect-ratio:1; border-radius:13px; background:#fff; border:1px solid #ffe9f4; display:flex; flex-direction:column; align-items:center; justify-content:center; cursor:pointer; position:relative; overflow:hidden; }
+#chalOverlay .chalHFill{ position:absolute; left:0; right:0; bottom:0; background:linear-gradient(180deg,#ffb7d9,#ff8fc7); opacity:.5; }
+#chalOverlay .chalHCell.done .chalHFill{ background:linear-gradient(180deg,#ffe08a,#ffc94d); opacity:.75; }
+#chalOverlay .chalHDn{ position:relative; font-size:10px; font-weight:800; color:#e84f96; }
+#chalOverlay .chalHEm{ position:relative; font-size:13px; line-height:1.2; }
+#chalOverlay .chalHCell.locked{ opacity:.4; cursor:default; }
+#chalOverlay .chalHCell.sel{ outline:2px solid #ff6fae; }
+#chalOverlay .chalHistHint{ font-size:11px; color:#a8899a; text-align:center; font-weight:700; margin-bottom:6px; }
+/* ---------- 관리 ---------- */
+#chalOverlay .chalAdminScroll{ flex:1 1 auto; min-height:0; overflow-y:auto; -webkit-overflow-scrolling:touch; }
+#chalOverlay .chalAdminCard{ background:#fff; border:1px solid #ffe9f4; border-radius:18px; padding:15px; margin-bottom:12px; }
+#chalOverlay .chalAdminCard h3{ font-size:13.5px; font-weight:800; margin:0 0 12px; color:#e84f96; }
+#chalOverlay .chalFRow{ margin-bottom:11px; }
+#chalOverlay .chalFRow label{ display:block; font-size:11.5px; color:#a8899a; font-weight:700; margin-bottom:5px; }
+#chalOverlay .chalFRow input{ width:100%; border:1.5px solid #ffd1e8; border-radius:12px; padding:10px 12px; font-size:14px; outline:none; color:#4a3540; background:#fff; font-weight:700; }
+#chalOverlay .chalFRow input:focus{ border-color:#ff6fae; }
+#chalOverlay .chalFGrid{ display:grid; grid-template-columns:1fr 1fr; gap:10px; }
+#chalOverlay .chalToggleRow{ display:flex; align-items:center; gap:8px; font-size:12.5px; font-weight:700; color:#4a3540; margin:2px 0 12px; cursor:pointer; user-select:none; }
+#chalOverlay .chalToggleRow input{ width:16px; height:16px; accent-color:#ff6fae; margin:0; }
+#chalOverlay .chalHint{ font-size:11px; color:#a8899a; margin-top:8px; line-height:1.5; font-weight:600; }
+#chalOverlay .chalManageRow{ display:flex; align-items:center; gap:8px; padding:8px 4px; border-bottom:1px dashed #ffe3f0; font-size:13px; font-weight:700; color:#4a3540; }
+#chalOverlay .chalManageRow:last-child{ border-bottom:none; }
+#chalOverlay .chalManageDel{ margin-left:auto; border:none; background:#fff0f7; color:#d76fa5; width:26px; height:26px; border-radius:9px; cursor:pointer; padding:0; font-weight:900; }
+/* ---------- 탭바 ---------- */
+#chalOverlay .chalTabbar{ flex:0 0 auto; display:flex; background:#fff; border-top:1px solid #ffe3f0; padding:6px 8px calc(7px + env(safe-area-inset-bottom)); }
+#chalOverlay .chalTab{ flex:1; border:none; background:none; text-align:center; padding:6px 0 5px; cursor:pointer; border-radius:14px; transition:.15s; }
+#chalOverlay .chalTabIc{ font-size:18px; display:block; filter:grayscale(1) opacity(.45); transition:.15s; }
+#chalOverlay .chalTabLb{ font-size:10px; font-weight:700; color:#a8899a; margin-top:2px; display:block; }
+#chalOverlay .chalTab.on{ background:#ffe3f0; }
+#chalOverlay .chalTab.on .chalTabIc{ filter:none; }
+#chalOverlay .chalTab.on .chalTabLb{ color:#e84f96; }
+/* ---------- 전역 팡파레 FX ---------- */
+#chalFxCanvas{ position:fixed; inset:0; z-index:1500; pointer-events:none; }
+#chalShimmer{
+  position:fixed; inset:0; z-index:1490; pointer-events:none; opacity:0;
+  background:linear-gradient(120deg,rgba(255,111,174,.14),rgba(255,215,106,.16),rgba(143,216,255,.14),rgba(199,155,255,.15));
+  background-size:400% 400%;
+}
+#chalShimmer.on{ animation:chalShimmerAn 3s ease forwards; }
+@keyframes chalShimmerAn{ 0%{opacity:0;} 15%{opacity:1;} 80%{opacity:1; background-position:100% 100%;} 100%{opacity:0;} }
+#chalBanner{ position:fixed; top:34%; left:50%; transform:translate(-50%,-50%) scale(.6); z-index:1510; pointer-events:none; opacity:0; text-align:center; }
+#chalBanner.show{ animation:chalBannerPop 2.4s cubic-bezier(.2,1.2,.3,1) forwards; }
+@keyframes chalBannerPop{
+  0%{opacity:0; transform:translate(-50%,-50%) scale(.5);}
+  12%{opacity:1; transform:translate(-50%,-50%) scale(1.08);}
+  20%{transform:translate(-50%,-50%) scale(1);}
+  80%{opacity:1; transform:translate(-50%,-50%) scale(1);}
+  100%{opacity:0; transform:translate(-50%,-56%) scale(.96);}
+}
+#chalBanner .chalBEmoji{ font-size:44px; filter:drop-shadow(0 4px 10px rgba(232,79,150,.35)); }
+#chalBanner .chalBText{ font-size:20px; font-weight:900; color:#e84f96; text-shadow:0 2px 0 #fff,0 4px 14px rgba(232,79,150,.3); margin-top:4px; }
+#chalBanner .chalBSub{ font-size:12px; font-weight:700; color:#a8899a; margin-top:2px; text-shadow:0 1px 0 #fff; }
+#chalToast{
+  position:fixed; bottom:64px; left:50%; transform:translateX(-50%) translateY(20px); z-index:1600;
+  background:rgba(74,53,64,.92); color:#fff; font-size:12.5px; font-weight:700;
+  padding:10px 18px; border-radius:999px; opacity:0; transition:.25s; pointer-events:none;
+  white-space:nowrap; max-width:92vw; overflow:hidden; text-overflow:ellipsis;
+}
+#chalToast.show{ opacity:1; transform:translateX(-50%); }
+</style>
 </head>
 <body>
   <div class="wrap">
@@ -1047,6 +1252,7 @@
       </div>
       <div class="topActions">
         <button class="pill pillBtn" id="btnOnline" type="button" title="접속자 목록 보기">0명 접속</button>
+        <button class="btnMini chalTopBtn" id="btnChallenge" type="button" title="글자수 챌린지">🏆</button>
         <button class="btnMini" id="btnMenu" type="button" title="메뉴">☰ 메뉴</button>
         <button class="btnMini" id="btnLeave" title="나가기">🏃‍♂️나가기</button>
 
@@ -1128,6 +1334,8 @@
     <div class="card timer">
       <div class="time" id="time">25:00</div>
       <div class="phase" id="phase">🔥작업 중🔥</div>
+      <!-- ✅ v4.7.0 글자수 챌린지 라이브 티커 (620px 미만에서는 숨김) -->
+      <div id="chalTicker" aria-hidden="true"></div>
       <!-- 구버전 스크립트 안전 호환용 숨김 요소: 타이머 제어 기능은 사용하지 않음 -->
       <div class="controls" hidden aria-hidden="true">
         <button id="btnStart" type="button" disabled></button>
@@ -1190,6 +1398,132 @@
       </div>
     </div>
   </div>
+
+  <!-- ✅ v4.7.0 글자수 챌린지: 모달 + 전역 팡파레 마크업 (POMO_CHALLENGE_V1) -->
+  <div id="chalOverlay" aria-hidden="true">
+    <div class="chalCard" role="dialog" aria-modal="true" aria-label="글자수 챌린지">
+      <div class="chalHead">
+        <div class="chalHeadTop">
+          <span class="chalHdName" id="chalHdName">글자수 챌린지</span>
+          <span class="chalHdDday" id="chalHdDday">-</span>
+          <button class="chalCloseBtn" id="chalClose" type="button" title="닫기">✕</button>
+        </div>
+      </div>
+      <div class="chalDayStrip" id="chalDayStrip"></div>
+      <div class="chalBody">
+        <div class="chalEmpty" id="chalEmptyBox" style="display:none;">진행 중인 챌린지가 없어요 🏆<br/>관리 탭에서 시작해 보세요</div>
+
+        <section class="chalView" id="chalViewToday">
+          <div class="chalGaugeDayLabel" id="chalGaugeDayLabel"></div>
+          <div class="chalGaugeWrap" id="chalGaugeWrap">
+            <svg viewBox="0 0 230 230">
+              <defs>
+                <linearGradient id="chalGradPink" x1="0" y1="0" x2="1" y2="1">
+                  <stop offset="0" stop-color="#ff8fc7"/><stop offset="1" stop-color="#ff6fae"/>
+                </linearGradient>
+                <linearGradient id="chalGradGold" x1="0" y1="0" x2="1" y2="1">
+                  <stop offset="0" stop-color="#ffd76a"/><stop offset="1" stop-color="#ff9d3c"/>
+                </linearGradient>
+              </defs>
+              <circle class="chalRingTrack" cx="115" cy="115" r="96" fill="none" stroke-width="17"/>
+              <circle class="chalRingProg" id="chalRingProg" cx="115" cy="115" r="96" fill="none" stroke-width="17" stroke-linecap="round" transform="rotate(-90 115 115)"/>
+            </svg>
+            <div class="chalGaugeCenter">
+              <div class="chalGcCount" id="chalGcCount">0</div>
+              <div class="chalGcGoal" id="chalGcGoal">/ 0자</div>
+              <div class="chalGcPct" id="chalGcPct">0%</div>
+            </div>
+          </div>
+          <div class="chalInputArea" id="chalInputArea">
+            <div class="chalChips" id="chalQuickChips"></div>
+            <div class="chalAddRow">
+              <input id="chalAmtInput" type="number" inputmode="numeric" min="1" placeholder="쓴 글자수 입력" />
+              <button class="chalBtnPink" id="chalAddBtn" type="button">채우기</button>
+            </div>
+            <div class="chalInputNote" id="chalInputNote" style="display:none;"></div>
+          </div>
+          <div class="chalJoinCard" id="chalJoinCard" style="display:none;">
+            <div class="chalJoinRow"><span>🎯 일일 목표</span><b id="chalJoinGoal">-</b></div>
+            <div class="chalJoinRow"><span>📅 기간</span><b id="chalJoinPeriod">-</b></div>
+            <div class="chalJoinRow"><span>👥 참여 중</span><b id="chalJoinCount">0명</b></div>
+            <button class="chalBtnPink chalJoinBtn" id="chalJoinBtn" type="button">챌린지 참여하기 🚀</button>
+          </div>
+          <div class="chalLogHead">📝 기록</div>
+          <div class="chalLogList" id="chalLogList"></div>
+        </section>
+
+        <section class="chalView" id="chalViewBoard">
+          <div class="chalSectionTitle">👥 참여자 현황 <span class="chalSectionSub" id="chalBoardDayLabel"></span></div>
+          <div class="chalSumRow">
+            <div class="chalSumCard"><div class="chalSumV" id="chalSumJoin">0</div><div class="chalSumK">참여자</div></div>
+            <div class="chalSumCard"><div class="chalSumV" id="chalSumDone">0</div><div class="chalSumK">목표 달성</div></div>
+            <div class="chalSumCard"><div class="chalSumV" id="chalSumTotal">0</div><div class="chalSumK">모두의 글자수</div></div>
+          </div>
+          <div class="chalBoardList" id="chalBoardList"></div>
+        </section>
+
+        <section class="chalView" id="chalViewHistory">
+          <div class="chalSectionTitle">📅 나의 챌린지 기록</div>
+          <div class="chalSumRow">
+            <div class="chalSumCard"><div class="chalSumV" id="chalHTotal">0</div><div class="chalSumK">누적 글자수</div></div>
+            <div class="chalSumCard"><div class="chalSumV" id="chalHDone">0일</div><div class="chalSumK">달성한 날</div></div>
+            <div class="chalSumCard"><div class="chalSumV" id="chalHBest">0</div><div class="chalSumK">최고 기록</div></div>
+          </div>
+          <div class="chalHistScroll">
+            <div class="chalHistGrid" id="chalHistGrid"></div>
+            <div class="chalHistHint">칸을 누르면 해당 일자의 기록으로 이동해요 ✨</div>
+          </div>
+        </section>
+
+        <section class="chalView" id="chalViewAdmin">
+          <div class="chalAdminScroll">
+            <div class="chalSectionTitle">⚙️ 챌린지 관리</div>
+            <div class="chalAdminCard" id="chalAdminLock">
+              <h3>🔐 관리자 인증</h3>
+              <div class="chalFRow">
+                <label for="chalPwInput">관리자 비밀번호</label>
+                <input id="chalPwInput" type="password" placeholder="비밀번호 입력" autocomplete="off" />
+              </div>
+              <button class="chalBtnPink chalBtnFull" id="chalUnlockBtn" type="button">인증하기</button>
+              <div class="chalHint">먼슬리 페이지와 같은 비밀번호를 사용해요. 아직 등록된 비밀번호가 없으면 첫 입력이 새 관리자 비밀번호로 등록돼요.</div>
+            </div>
+            <div id="chalAdminPanel" style="display:none;">
+              <div class="chalAdminCard">
+                <h3>🎯 챌린지 설정</h3>
+                <div class="chalFRow"><label for="chalSetName">챌린지 이름</label><input id="chalSetName" type="text" maxlength="30" placeholder="예: 8월 마감 대작전" /></div>
+                <div class="chalFGrid">
+                  <div class="chalFRow"><label for="chalSetGoal">일일 목표 글자수</label><input id="chalSetGoal" type="number" min="100" step="100" /></div>
+                  <div class="chalFRow"><label for="chalSetDays">도전 일수 (1~60)</label><input id="chalSetDays" type="number" min="1" max="60" /></div>
+                </div>
+                <div class="chalFRow"><label for="chalSetStart">시작일</label><input id="chalSetStart" type="date" /></div>
+                <label class="chalToggleRow" for="chalSetActive">
+                  <input id="chalSetActive" type="checkbox" />
+                  <span>진행 중 (끄면 챌린지가 잠시 멈춰요)</span>
+                </label>
+                <button class="chalBtnPink chalBtnFull" id="chalSaveBtn" type="button">설정 저장</button>
+                <div class="chalHint">하루 경계는 기록 시스템과 같은 KST 자정이에요.</div>
+              </div>
+              <div class="chalAdminCard">
+                <h3>👥 참여자 관리</h3>
+                <div id="chalManageList"></div>
+              </div>
+              <button class="chalBtnGhost chalBtnFull" id="chalLockBtn" type="button">🔒 관리자 잠금</button>
+            </div>
+          </div>
+        </section>
+      </div>
+      <div class="chalTabbar">
+        <button class="chalTab on" type="button" data-chalview="today"><span class="chalTabIc">✍️</span><span class="chalTabLb">오늘</span></button>
+        <button class="chalTab" type="button" data-chalview="board"><span class="chalTabIc">👥</span><span class="chalTabLb">현황</span></button>
+        <button class="chalTab" type="button" data-chalview="history"><span class="chalTabIc">📅</span><span class="chalTabLb">기록</span></button>
+        <button class="chalTab" type="button" data-chalview="admin"><span class="chalTabIc">⚙️</span><span class="chalTabLb">관리</span></button>
+      </div>
+    </div>
+  </div>
+  <div id="chalShimmer" aria-hidden="true"></div>
+  <canvas id="chalFxCanvas" aria-hidden="true"></canvas>
+  <div id="chalBanner" aria-hidden="true"><div class="chalBEmoji"></div><div class="chalBText"></div><div class="chalBSub"></div></div>
+  <div id="chalToast" role="status" aria-live="polite"></div>
 
   <div class="overlay" id="overlay">
     <div class="overlayCard">
@@ -4984,6 +5318,1143 @@ window.guideSave = async function(){
   // 메뉴가 늦게 그려지는 예외 상황까지 방어
   setTimeout(bindInstallButton, 300);
   setTimeout(bindInstallButton, 1200);
+})();
+</script>
+
+<!-- ✅ v4.7.0 글자수 챌린지: 로직 전체 (기존 코드와 격리된 IIFE) -->
+<script>
+(function POMO_CHALLENGE_V1(){
+  'use strict';
+
+  /* =====================
+   * 상수/경로
+   *  - 쓰기: challenge/config, challenge/participants/{pKey},
+   *          admin/config/adminHash(최초 1회), processCommandOnly 호출
+   *  - 구독: challenge/config, challenge/participants, state/{오늘}(활성+기간 내만)
+   *  - get(캐시): days/{월}, events/{일}, adminHash(인증 시)
+   * ===================== */
+  var ROOT = 'pomoRecords';
+  var CONFIG_PATH = ROOT + '/challenge/config';
+  var PARTS_PATH = ROOT + '/challenge/participants';
+  var ADMIN_HASH_PATH = ROOT + '/admin/config/adminHash';
+  var CELEB_LS_KEY = 'CHAL_CELEB_V1';
+  var DAY_MS = 86400000;
+  var KST_MS = 9 * 3600 * 1000;
+  var RING_C = 2 * Math.PI * 96;
+  var QUICK_AMOUNTS = [100, 300, 500, 1000];
+  var GET_CACHE_TTL = 60000;
+
+  /* ---------- 작은 유틸 ---------- */
+  function byId(id){ return document.getElementById(id); }
+  function core(){ return window.PomoRecordCore || null; }
+  function esc(s){
+    if (typeof escapeHtml === 'function') return escapeHtml(s);
+    return String(s == null ? '' : s).replace(/[&<>"']/g, function(m){
+      return { '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[m];
+    });
+  }
+  function fmtN(n){
+    var C = core();
+    if (C && typeof C.fmtNum === 'function') return C.fmtNum(n);
+    return String(Math.trunc(Number(n) || 0)).replace(/\B(?=(\d{3})+(?!\d))/g, ',');
+  }
+  function kstTodayKey(){
+    try{ if (typeof currentRecordDayKey_ === 'function') return currentRecordDayKey_(); }catch(e){}
+    return new Date(Date.now() + KST_MS).toISOString().slice(0, 10);
+  }
+  function isDayKey(s){ return /^\d{4}-\d{2}-\d{2}$/.test(String(s || '')); }
+  function addDays(dayKey, n){ return new Date(Date.parse(dayKey) + n * DAY_MS).toISOString().slice(0, 10); }
+  function dayDiff(a, b){ return Math.round((Date.parse(a) - Date.parse(b)) / DAY_MS); }
+  function monthOf(dayKey){ return String(dayKey).slice(0, 7); }
+  function mdLabel(dayKey){ return Number(dayKey.slice(5, 7)) + '/' + Number(dayKey.slice(8, 10)); }
+  function tsLabel(ms){
+    if (!ms) return '';
+    var d = new Date(Number(ms) + KST_MS);
+    return String(d.getUTCHours()).padStart(2, '0') + ':' + String(d.getUTCMinutes()).padStart(2, '0');
+  }
+  function tierFor(pct){
+    if (pct >= 300) return 4;
+    if (pct >= 200) return 3;
+    if (pct >= 150) return 2;
+    if (pct >= 100) return 1;
+    return 0;
+  }
+  function avatarColor(nick){
+    var h = 0, s = String(nick || '');
+    for (var i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) % 360;
+    return 'hsl(' + h + ' 70% 72%)';
+  }
+  function rawNick(){
+    try{
+      var el = byId('user');
+      return String((el && el.value) || '').trim();
+    }catch(e){ return ''; }
+  }
+  function myBase(){
+    var C = core();
+    var n = rawNick();
+    if (!C || !n) return '';
+    return C.normalizeName(C.displayBaseName(n));
+  }
+
+  /* ---------- 상태 ---------- */
+  var S = {
+    cfg: null,
+    parts: null,
+    today: kstTodayKey(),
+    stateToday: null,     // state/{오늘} 원본 (구독 중일 때만)
+    prevTotals: null,     // 병합닉네임별 오늘 합계 (티커 증가 감지용)
+    myTotalsByDay: {},    // dayKey -> 내 확정 합계 (days 원장 기반)
+    selDay: null,
+    view: 'today',
+    open: false,
+    adminUnlocked: false,
+    adminFilled: false,
+    daysCache: {},        // monthKey -> {at, val}
+    eventsCache: {}       // dayKey -> {at, val}
+  };
+  var subState = null;    // { day, un }
+  var tickRate = {};      // 병합닉네임 -> 마지막 티커 증가 라인 ts
+
+  function cfgValid(c){
+    return !!(c && isDayKey(c.startDate) &&
+      Number(c.dailyGoal) >= 100 &&
+      Number(c.days) >= 1 && Number(c.days) <= 60);
+  }
+  function challengeLive(){
+    var c = S.cfg;
+    if (!cfgValid(c) || !c.active) return false;
+    var idx = dayDiff(S.today, c.startDate);
+    return idx >= 0 && idx < Number(c.days);
+  }
+  function partCount(){ return Object.keys(S.parts || {}).length; }
+  function isParticipantName(baseName){
+    var C = core();
+    if (!C || !S.parts || !baseName) return false;
+    return !!S.parts[C.slotKey(baseName)];
+  }
+  function mergedTotals(stateObj){
+    var C = core(), out = {};
+    if (!C || !stateObj) return out;
+    Object.keys(stateObj).forEach(function(k){
+      var v = stateObj[k] || {};
+      var base = C.normalizeName(C.displayBaseName(v.name != null ? v.name : k));
+      if (!base) return;
+      out[base] = (out[base] || 0) + (Number(v.total) || 0);
+    });
+    return out;
+  }
+  function participantRows(totals){
+    var C = core();
+    if (!C || !S.parts) return [];
+    var rows = Object.keys(S.parts).map(function(k){
+      var nm = C.normalizeName(String((S.parts[k] && S.parts[k].name) || k));
+      return { name: nm, total: (totals && totals[nm]) || 0 };
+    }).filter(function(r){ return !!r.name; });
+    rows.sort(function(a, b){
+      return (b.total - a.total) || String(a.name).localeCompare(String(b.name), 'ko');
+    });
+    return rows;
+  }
+  function myTotalForDay(dayKey){
+    var me = myBase();
+    if (!me) return 0;
+    if (dayKey === S.today && S.prevTotals) return S.prevTotals[me] || 0;
+    return S.myTotalsByDay[dayKey] || 0;
+  }
+
+  /* ---------- 다운로드 절약형 get 캐시 (days/{월}, events/{일}) ---------- */
+  var pendingGets = {};
+  function cachedGet(path, cacheObj, key){
+    var c = cacheObj[key];
+    if (c && Date.now() - c.at < GET_CACHE_TTL) return Promise.resolve(c.val);
+    if (pendingGets[path]) return pendingGets[path];
+    var FBH = window.FB;
+    var p = Promise.resolve(FBH.get(FBH.ref(FBH.db, path))).then(function(snap){
+      var val = (snap && typeof snap.val === 'function') ? (snap.val() || {}) : {};
+      cacheObj[key] = { at: Date.now(), val: val };
+      delete pendingGets[path];
+      return val;
+    }).catch(function(){
+      delete pendingGets[path];
+      return c ? c.val : {};
+    });
+    pendingGets[path] = p;
+    return p;
+  }
+  function getDaysMonth(monthKey){ return cachedGet(ROOT + '/days/' + monthKey, S.daysCache, monthKey); }
+  function getEventsDay(dayKey){ return cachedGet(ROOT + '/events/' + dayKey, S.eventsCache, dayKey); }
+  function totalsForDay(dayKey){
+    if (dayKey === S.today && S.stateToday) return Promise.resolve(mergedTotals(S.stateToday));
+    return getDaysMonth(monthOf(dayKey)).then(function(m){
+      return mergedTotals((m && m[dayKey]) || {});
+    });
+  }
+  function refreshMyHistory(){
+    var c = S.cfg;
+    if (!cfgValid(c)) return Promise.resolve();
+    var me = myBase();
+    var end = addDays(c.startDate, Number(c.days) - 1);
+    var last = end < S.today ? end : S.today;
+    if (last < c.startDate){ S.myTotalsByDay = {}; return Promise.resolve(); }
+    var months = {};
+    for (var i = 0; i < Number(c.days); i++){
+      var dk = addDays(c.startDate, i);
+      if (dk > last) break;
+      months[monthOf(dk)] = true;
+    }
+    return Promise.all(Object.keys(months).map(getDaysMonth)).then(function(vals){
+      var map = {};
+      vals.forEach(function(monthData){
+        Object.keys(monthData || {}).forEach(function(dk){
+          if (!me) return;
+          var merged = mergedTotals(monthData[dk] || {});
+          if (merged[me] != null) map[dk] = merged[me];
+        });
+      });
+      S.myTotalsByDay = map;
+    }).catch(function(){});
+  }
+
+  /* ---------- state/{오늘} 구독 관리 (활성 + 기간 내에서만 1개) ---------- */
+  function ensureStateSub(){
+    var want = challengeLive();
+    if (subState && subState.day === S.today && want) return;
+    if (subState){
+      try{ subState.un(); }catch(e){}
+      subState = null;
+      S.stateToday = null;
+      S.prevTotals = null;
+    }
+    if (!want) return;
+    var FBH = window.FB;
+    var day = S.today;
+    var un = FBH.onValue(FBH.ref(FBH.db, ROOT + '/state/' + day), function(snap){
+      if (!subState || subState.day !== day) return;
+      var val = (snap && typeof snap.val === 'function') ? (snap.val() || {}) : {};
+      handleStateSnapshot(val);
+    }, function(){});
+    subState = { day: day, un: un };
+  }
+  function handleStateSnapshot(val){
+    S.stateToday = val;
+    var totals = mergedTotals(val);
+    var prev = S.prevTotals;
+    S.prevTotals = totals;
+    var goal = Number(S.cfg && S.cfg.dailyGoal) || 0;
+    var me = myBase();
+    if (prev){
+      Object.keys(totals).forEach(function(name){
+        if (!isParticipantName(name)) return;
+        var before = prev[name] || 0, after = totals[name] || 0;
+        if (after > before){
+          var now = Date.now();
+          if (!tickRate[name] || now - tickRate[name] >= 20000){
+            tickRate[name] = now;
+            pushTick('✍️ ' + name + ' +' + fmtN(after - before) + '자', 'chalTickUp');
+          }
+        }
+        if (goal > 0 && name !== me && before < goal && after >= goal){
+          pushTick('🎉 ' + name + ' 목표 달성!', 'chalTickGoal');
+        }
+      });
+    }
+    checkCelebration(totals, goal, me);
+    renderLive();
+  }
+
+  /* ---------- 팡파레 중복 방지 + 트리거 ---------- */
+  function readCeleb(){
+    try{
+      var v = JSON.parse(localStorage.getItem(CELEB_LS_KEY) || 'null');
+      return (v && typeof v === 'object') ? v : null;
+    }catch(e){ return null; }
+  }
+  function writeCeleb(o){
+    try{ localStorage.setItem(CELEB_LS_KEY, JSON.stringify(o)); }catch(e){}
+  }
+  function checkCelebration(totals, goal, me){
+    if (!challengeLive() || !goal || !me || !isParticipantName(me)) return;
+    var t = totals[me] || 0;
+    var tier = tierFor(t / goal * 100);
+    if (tier <= 0) return;
+    var st = readCeleb();
+    var prevTier = (st && st.dayKey === S.today && st.name === me) ? (Number(st.tier) || 0) : 0;
+    if (tier <= prevTier) return;
+    writeCeleb({ dayKey: S.today, name: me, tier: tier });
+    celebrate(tier);
+  }
+
+  /* ---------- 티커 (타이머 카드 오른쪽) ---------- */
+  var tick = { active: 0, queue: [], lanes: [false, false, false] };
+  var TICK_MAX_ACTIVE = 3, TICK_MAX_QUEUE = 4, TICK_LIFE = 6000;
+  function pushTick(text, cls){
+    if (!challengeLive()) return;
+    var el = byId('chalTicker');
+    if (!el) return;
+    if (el.offsetWidth === 0 && el.offsetHeight === 0) return; // 좁은 화면(숨김)
+    if (tick.active >= TICK_MAX_ACTIVE){
+      if (tick.queue.length >= TICK_MAX_QUEUE) return;
+      tick.queue.push({ text: text, cls: cls });
+      return;
+    }
+    spawnTick(text, cls);
+  }
+  function spawnTick(text, cls){
+    var el = byId('chalTicker');
+    if (!el) return;
+    var lane = 0;
+    for (var i = 0; i < TICK_MAX_ACTIVE; i++){ if (!tick.lanes[i]){ lane = i; break; } }
+    tick.lanes[lane] = true;
+    tick.active++;
+    var d = document.createElement('div');
+    d.className = 'chalTickItem' + (cls ? ' ' + cls : '');
+    d.textContent = text;
+    d.style.bottom = (6 + lane * 36) + 'px';
+    el.appendChild(d);
+    setTimeout(function(){
+      try{ if (d.parentNode) d.parentNode.removeChild(d); }catch(e){}
+      tick.lanes[lane] = false;
+      tick.active = Math.max(0, tick.active - 1);
+      if (tick.queue.length && challengeLive()){
+        var nx = tick.queue.shift();
+        spawnTick(nx.text, nx.cls);
+      }
+    }, TICK_LIFE + 150);
+  }
+  function stopTicker(){
+    tick.queue.length = 0;
+    tick.lanes = [false, false, false];
+    tick.active = 0;
+    var el = byId('chalTicker');
+    if (el) el.innerHTML = '';
+  }
+  function pushRankTicker(){
+    if (!challengeLive() || !S.prevTotals) return;
+    var rows = participantRows(S.prevTotals);
+    if (!rows.length) return;
+    var medals = ['🥇', '🥈', '🥉'];
+    var lines = [];
+    for (var i = 0; i < Math.min(3, rows.length); i++){
+      if (rows[i].total <= 0) break;
+      lines.push(medals[i] + ' ' + rows[i].name + ' ' + fmtN(rows[i].total) + '자');
+    }
+    var me = myBase();
+    if (me){
+      var myIdx = -1;
+      for (var j = 0; j < rows.length; j++){ if (rows[j].name === me){ myIdx = j; break; } }
+      if (myIdx >= 3 && rows[myIdx].total > 0) lines.push('🌸 나는 ' + (myIdx + 1) + '위 · ' + fmtN(rows[myIdx].total) + '자');
+    }
+    lines.forEach(function(t, k){
+      setTimeout(function(){ pushTick(t, 'chalTickRank'); }, k * 1200);
+    });
+  }
+
+  /* ---------- 자정/구독 상태 점검 (60초) ---------- */
+  function minuteTick(){
+    var nowDay = kstTodayKey();
+    if (nowDay !== S.today){
+      var prevToday = S.today;
+      S.today = nowDay;
+      tickRate = {};
+      stopTicker();
+      if (S.selDay === prevToday) S.selDay = nowDay;
+      ensureStateSub();
+      renderAll();
+    } else {
+      ensureStateSub();
+    }
+    if (challengeLive()) pushRankTicker();
+    if (S.open){
+      refreshMyHistory().then(function(){
+        if (!S.open) return;
+        renderDayStrip();
+        if (S.view === 'today'){
+          renderGauge();
+          // 채팅/직접입력으로 쌓인 기록도 리스트에 보이게 1분 주기로만 새로 읽는다
+          if (S.selDay === S.today){ delete S.eventsCache[S.today]; renderLogList(); }
+        }
+        if (S.view === 'history') paintHistory();
+      });
+    }
+  }
+
+  /* ---------- 렌더 ---------- */
+  function renderBadge(){
+    var b = byId('btnChallenge');
+    if (b) b.classList.toggle('chalHasBadge', challengeLive());
+  }
+  function ensureSelDay(){
+    var c = S.cfg;
+    if (!cfgValid(c)){ S.selDay = S.today; return; }
+    var last = addDays(c.startDate, Number(c.days) - 1);
+    var maxSel = S.today < last ? S.today : last;
+    var sel = isDayKey(S.selDay) ? S.selDay : S.today;
+    if (sel > maxSel) sel = maxSel;
+    if (sel < c.startDate || maxSel < c.startDate) sel = c.startDate;
+    S.selDay = sel;
+  }
+  function ddayLabel(){
+    var c = S.cfg;
+    if (!cfgValid(c)) return '준비 중';
+    if (!c.active) return '일시 정지';
+    var idx = dayDiff(S.today, c.startDate);
+    if (idx < 0) return '시작 전';
+    var remain = Number(c.days) - idx;
+    if (remain <= 0) return '종료';
+    return remain === 1 ? '마지막 날!' : 'D-' + remain;
+  }
+  function renderAll(){
+    renderBadge();
+    if (!S.open) return;
+    ensureSelDay();
+    var c = S.cfg;
+    byId('chalHdName').textContent =
+      (cfgValid(c) && String(c.name || '').trim()) ? String(c.name).trim() : '글자수 챌린지';
+    byId('chalHdDday').textContent = ddayLabel();
+    renderDayStrip();
+    renderView();
+  }
+  function renderLive(){
+    renderBadge();
+    if (!S.open) return;
+    renderDayStrip();
+    if (S.view === 'today'){ renderGauge(); renderInputArea(); }
+    else if (S.view === 'board' && S.selDay === S.today) renderBoard();
+    else if (S.view === 'history') paintHistory();
+  }
+  var lastStripSel = null;
+  function renderDayStrip(){
+    var wrap = byId('chalDayStrip');
+    if (!wrap) return;
+    var c = S.cfg;
+    if (!cfgValid(c)){ wrap.style.display = 'none'; wrap.innerHTML = ''; return; }
+    wrap.style.display = '';
+    var days = Number(c.days), goal = Number(c.dailyGoal) || 0;
+    var prevScroll = wrap.scrollLeft;
+    var html = '';
+    for (var i = 0; i < days; i++){
+      var dk = addDays(c.startDate, i);
+      var locked = dk > S.today;
+      var t = locked ? 0 : myTotalForDay(dk);
+      var cls = 'chalDayChip' +
+        (locked ? ' locked' : '') +
+        (dk === S.selDay ? ' sel' : '') +
+        (dk === S.today ? ' today' : '') +
+        (!locked && goal > 0 && t >= goal ? ' done' : (!locked && t > 0 ? ' partial' : ''));
+      html += '<div class="' + cls + '" data-chalday="' + dk + '">' +
+        '<div class="chalDn">' + (locked ? '🔒 ' : '') + 'Day ' + (i + 1) + '</div>' +
+        '<div class="chalDd">' + mdLabel(dk) + '</div><div class="chalDot"></div></div>';
+    }
+    wrap.innerHTML = html;
+    var sel = wrap.querySelector('.chalDayChip.sel');
+    if (sel && lastStripSel !== S.selDay){
+      lastStripSel = S.selDay;
+      wrap.scrollLeft = Math.max(0, sel.offsetLeft - (wrap.clientWidth - sel.offsetWidth) / 2);
+    } else {
+      wrap.scrollLeft = prevScroll;
+    }
+  }
+  function renderView(){
+    var noCfg = !cfgValid(S.cfg);
+    var showEmpty = noCfg && S.view !== 'admin';
+    byId('chalEmptyBox').style.display = showEmpty ? '' : 'none';
+    var views = { today: 'chalViewToday', board: 'chalViewBoard', history: 'chalViewHistory', admin: 'chalViewAdmin' };
+    Object.keys(views).forEach(function(v){
+      byId(views[v]).classList.toggle('on', !showEmpty && S.view === v);
+    });
+    var tabs = document.querySelectorAll('#chalOverlay .chalTab');
+    Array.prototype.forEach.call(tabs, function(t){
+      t.classList.toggle('on', t.getAttribute('data-chalview') === S.view);
+    });
+    if (showEmpty) return;
+    if (S.view === 'today'){ renderGauge(); renderInputArea(); renderLogList(); }
+    else if (S.view === 'board'){ renderBoard(); }
+    else if (S.view === 'history'){ renderHistory(); }
+    else if (S.view === 'admin'){ renderAdmin(); }
+  }
+  var lastGauge = null;
+  function renderGauge(){
+    var c = S.cfg;
+    if (!cfgValid(c)) return;
+    var goal = Number(c.dailyGoal) || 0;
+    var dk = S.selDay;
+    var idx = dayDiff(dk, c.startDate);
+    var t = myTotalForDay(dk);
+    var pct = goal ? t / goal * 100 : 0;
+    var tier = tierFor(pct);
+    byId('chalGaugeDayLabel').innerHTML =
+      '<b>Day ' + (idx + 1) + '</b> · ' + mdLabel(dk) + (dk === S.today ? ' (오늘)' : '');
+    byId('chalGcCount').textContent = fmtN(t);
+    byId('chalGcGoal').textContent = '/ ' + fmtN(goal) + '자';
+    var pctEl = byId('chalGcPct');
+    pctEl.textContent = pct >= 100 ? Math.floor(pct) + '% 달성! 🎉' : Math.floor(pct) + '%';
+    pctEl.className = 'chalGcPct' + (tier >= 3 ? ' rainbow' : tier >= 1 ? ' gold' : '');
+    var ring = byId('chalRingProg');
+    ring.setAttribute('stroke-dasharray', String(RING_C));
+    ring.style.strokeDashoffset = String(RING_C * (1 - Math.min(pct, 100) / 100));
+    ring.setAttribute('class', 'chalRingProg' + (tier >= 3 ? ' rainbow' : tier >= 1 ? ' gold' : ''));
+    if (lastGauge && lastGauge.dk === dk && t > lastGauge.t){
+      var gw = byId('chalGaugeWrap');
+      gw.classList.remove('chalGaugePulse');
+      void gw.offsetWidth;
+      gw.classList.add('chalGaugePulse');
+    }
+    lastGauge = { dk: dk, t: t };
+  }
+  function renderInputArea(){
+    var area = byId('chalInputArea'), join = byId('chalJoinCard'), note = byId('chalInputNote');
+    var c = S.cfg;
+    if (!cfgValid(c)) return;
+    var me = myBase();
+    var participant = !!me && isParticipantName(me);
+    var live = challengeLive();
+    if (!participant && live){
+      area.style.display = 'none';
+      join.style.display = '';
+      byId('chalJoinGoal').textContent = fmtN(c.dailyGoal) + '자';
+      byId('chalJoinPeriod').textContent =
+        mdLabel(c.startDate) + ' ~ ' + mdLabel(addDays(c.startDate, Number(c.days) - 1)) + ' (' + c.days + '일)';
+      byId('chalJoinCount').textContent = partCount() + '명';
+      return;
+    }
+    join.style.display = 'none';
+    area.style.display = '';
+    var reason = '';
+    if (!live){
+      reason = !c.active ? '챌린지가 잠시 멈춰 있어요 ⏸' :
+        (dayDiff(S.today, c.startDate) < 0
+          ? '아직 챌린지 시작 전이에요! (' + mdLabel(c.startDate) + ' 시작)'
+          : '챌린지가 끝났어요. 수고했어요! 🎊');
+    } else if (S.selDay !== S.today){
+      reason = '지난 날짜는 볼 수만 있어요. 오늘 칸에서 채워 주세요 ✍️';
+    } else if (!me){
+      reason = '상단 닉네임을 입력하면 채울 수 있어요';
+    }
+    area.classList.toggle('isDisabled', !!reason);
+    note.style.display = reason ? '' : 'none';
+    note.textContent = reason;
+  }
+  var logToken = 0;
+  function renderLogList(){
+    var list = byId('chalLogList');
+    if (!list || !S.open || S.view !== 'today' || !cfgValid(S.cfg)) return;
+    var me = myBase();
+    if (!me){
+      list.innerHTML = '<div class="chalEmptyMini">상단에 닉네임을 입력하면 내 기록이 보여요 ✍️</div>';
+      return;
+    }
+    var dk = S.selDay;
+    var token = ++logToken;
+    getEventsDay(dk).then(function(ev){
+      if (token !== logToken || !S.open || S.view !== 'today' || S.selDay !== dk) return;
+      var C = core();
+      if (!C) return;
+      var items = [];
+      Object.keys(ev || {}).forEach(function(pid){
+        var e = ev[pid] || {};
+        var base = C.normalizeName(C.displayBaseName(String(e.name || '')));
+        if (base === me) items.push(e);
+      });
+      items.sort(function(a, b){ return (Number(b.ts) || 0) - (Number(a.ts) || 0); });
+      if (!items.length){
+        list.innerHTML = '<div class="chalEmptyMini">아직 기록이 없어요. 첫 글자를 채워 볼까요? 🌸</div>';
+        return;
+      }
+      var html = '';
+      items.forEach(function(e){
+        var type = String(e.type || '');
+        var time = tsLabel(Number(e.ts) || 0);
+        if (type === 'delta' || type === 'snapshot' || type === 'manual_current'){
+          var d = Number(e.delta) || 0;
+          html += '<div class="chalLogItem"><span class="chalLogAmt' + (d < 0 ? ' minus' : '') + '">' +
+            (d < 0 ? '-' : '+') + fmtN(Math.abs(d)) + '자</span>' +
+            '<span class="chalLogTime">' + time + '</span></div>';
+        } else if (type === 'baseline' || type === 'manual_base'){
+          html += '<div class="chalLogSys">📌 기준 ' + fmtN(Number(e.cur) || 0) + '자 · ' + time + '</div>';
+        } else if (type === 'reset'){
+          html += '<div class="chalLogSys">♻️ 오늘 기록 초기화 · ' + time + '</div>';
+        } else if (type === 'episode_start'){
+          html += '<div class="chalLogSys">🆕 새편 시작 · ' + time + '</div>';
+        } else {
+          html += '<div class="chalLogSys">' + esc(type || '기록') + ' · ' + time + '</div>';
+        }
+      });
+      list.innerHTML = html;
+    }).catch(function(){});
+  }
+  var boardToken = 0;
+  function renderBoard(){
+    var c = S.cfg;
+    if (!cfgValid(c) || !S.open || S.view !== 'board') return;
+    var dk = S.selDay, goal = Number(c.dailyGoal) || 0;
+    byId('chalBoardDayLabel').textContent = '· Day ' + (dayDiff(dk, c.startDate) + 1) + ' (' + mdLabel(dk) + ')';
+    var token = ++boardToken;
+    totalsForDay(dk).then(function(totals){
+      if (token !== boardToken || !S.open || S.view !== 'board' || S.selDay !== dk) return;
+      var rows = participantRows(totals);
+      byId('chalSumJoin').textContent = String(rows.length);
+      byId('chalSumDone').textContent = String(rows.filter(function(r){ return goal > 0 && r.total >= goal; }).length);
+      byId('chalSumTotal').textContent = fmtN(rows.reduce(function(a, r){ return a + r.total; }, 0));
+      var me = myBase(), medals = ['🥇', '🥈', '🥉'];
+      var html = '';
+      rows.forEach(function(r, i){
+        var pct = goal ? r.total / goal * 100 : 0;
+        var tier = tierFor(pct);
+        html += '<div class="chalPRow' + (r.name === me ? ' me' : '') + '">' +
+          '<span class="chalPRank">' + (r.total > 0 ? (medals[i] || String(i + 1)) : '-') + '</span>' +
+          '<span class="chalAvatar" style="background:' + avatarColor(r.name) + '">' + esc(r.name.slice(0, 1)) + '</span>' +
+          '<span class="chalPInfo"><span class="chalPName">' + esc(r.name) +
+            (r.name === me ? ' <span class="chalPBadge">🌸나</span>' : '') +
+            (tier >= 3 ? ' 👑' : tier >= 1 ? ' ⭐' : '') + '</span>' +
+          '<span class="chalPBar"><i class="' + (pct >= 100 ? 'gold' : '') + '" style="width:' + Math.min(pct, 100) + '%"></i></span></span>' +
+          '<span class="chalPNum"><div class="chalPNumA">' + fmtN(r.total) + '자</div>' +
+          '<div class="chalPNumP">' + Math.floor(pct) + '%</div></span></div>';
+      });
+      byId('chalBoardList').innerHTML = html || '<div class="chalEmptyMini">아직 참여자가 없어요.</div>';
+    }).catch(function(){});
+  }
+  var histToken = 0;
+  function renderHistory(){
+    if (!cfgValid(S.cfg)) return;
+    paintHistory();
+    var token = ++histToken;
+    refreshMyHistory().then(function(){
+      if (token !== histToken || !S.open || S.view !== 'history') return;
+      paintHistory();
+    });
+  }
+  function paintHistory(){
+    var c = S.cfg;
+    if (!cfgValid(c) || !S.open || S.view !== 'history') return;
+    var goal = Number(c.dailyGoal) || 0, days = Number(c.days);
+    var total = 0, done = 0, best = 0, html = '';
+    for (var i = 0; i < days; i++){
+      var dk = addDays(c.startDate, i);
+      var locked = dk > S.today;
+      var t = locked ? 0 : myTotalForDay(dk);
+      if (!locked){
+        total += t;
+        if (goal > 0 && t >= goal) done++;
+        if (t > best) best = t;
+      }
+      var pct = goal ? Math.min(t / goal * 100, 100) : 0;
+      var tier = tierFor(goal ? t / goal * 100 : 0);
+      var em = locked ? '🔒' : tier >= 4 ? '👑' : tier >= 3 ? '🌟' : tier >= 2 ? '🔥' : tier >= 1 ? '⭐' : t > 0 ? '✏️' : '·';
+      html += '<div class="chalHCell' + (locked ? ' locked' : '') +
+        ((goal > 0 && t >= goal) ? ' done' : '') + (dk === S.selDay ? ' sel' : '') +
+        '" data-chalday="' + dk + '" title="Day ' + (i + 1) + ' · ' + fmtN(t) + '자">' +
+        '<div class="chalHFill" style="height:' + pct + '%"></div>' +
+        '<div class="chalHDn">' + (i + 1) + '</div><div class="chalHEm">' + em + '</div></div>';
+    }
+    byId('chalHistGrid').innerHTML = html;
+    byId('chalHTotal').textContent = fmtN(total);
+    byId('chalHDone').textContent = done + '일';
+    byId('chalHBest').textContent = fmtN(best);
+  }
+  function renderAdmin(){
+    var lock = byId('chalAdminLock'), panel = byId('chalAdminPanel');
+    lock.style.display = S.adminUnlocked ? 'none' : '';
+    panel.style.display = S.adminUnlocked ? '' : 'none';
+    if (!S.adminUnlocked) return;
+    if (!S.adminFilled){
+      S.adminFilled = true;
+      var c = S.cfg || {};
+      byId('chalSetName').value = String(c.name || '');
+      byId('chalSetGoal').value = (c.dailyGoal != null) ? String(c.dailyGoal) : '3000';
+      byId('chalSetDays').value = (c.days != null) ? String(c.days) : '14';
+      byId('chalSetStart').value = isDayKey(c.startDate) ? c.startDate : S.today;
+      byId('chalSetActive').checked = (c.active === undefined) ? true : !!c.active;
+    }
+    var parts = S.parts || {};
+    var html = '';
+    Object.keys(parts).sort().forEach(function(k){
+      var nm = String((parts[k] && parts[k].name) || k);
+      html += '<div class="chalManageRow">' +
+        '<span class="chalAvatar" style="width:26px;height:26px;font-size:12px;background:' + avatarColor(nm) + '">' + esc(nm.slice(0, 1)) + '</span>' +
+        '<span>' + esc(nm) + '</span>' +
+        '<button class="chalManageDel" type="button" data-chalkick="' + esc(k) + '" title="내보내기">✕</button></div>';
+    });
+    byId('chalManageList').innerHTML = html || '<div class="chalEmptyMini">아직 참여자가 없어요.</div>';
+  }
+
+  /* ---------- 액션: 채우기(+N 조용한 기록) / 참여 / 관리 ---------- */
+  var sending = false;
+  function submitDelta(rawAmt){
+    if (sending) return;
+    var n = Math.floor(Number(rawAmt));
+    if (!(n > 0)){ toast('글자수를 입력해 주세요!'); return; }
+    n = Math.min(n, 500000);
+    if (!challengeLive()){ toast('지금은 챌린지 진행 기간이 아니에요'); return; }
+    if (S.selDay !== S.today){ toast('오늘 날짜에만 채울 수 있어요!'); return; }
+    var me = myBase();
+    if (!me){ toast('상단 닉네임을 먼저 입력해 주세요!'); return; }
+    if (!isParticipantName(me)){ toast('먼저 챌린지에 참여해 주세요 🚀'); return; }
+    if (!window.POMO_RTDB_RECORDS || typeof window.POMO_RTDB_RECORDS.call !== 'function'){
+      toast('기록 모듈을 불러오지 못했어요. 새로고침 후 다시 시도해 주세요.');
+      return;
+    }
+    sending = true;
+    var btn = byId('chalAddBtn');
+    if (btn) btn.disabled = true;
+    var requestId = 'chal_' + Date.now() + '_' + Math.random().toString(36).slice(2, 10);
+    var sid = 'rtdb';
+    try{ if (typeof sessionId !== 'undefined' && sessionId) sid = sessionId; }catch(e){}
+    var user = rawNick() || '익명';
+    try{ if (typeof myName === 'function') user = myName(); }catch(e){}
+    Promise.resolve(window.POMO_RTDB_RECORDS.call('processCommandOnly', [
+      sid, user, '+' + n, requestId, kstTodayKey()
+    ])).then(function(res){
+      if (res && res.ok === false && res.reason === 'DAY_CHANGED'){
+        toast('자정이 지났어요. 새 날짜에서 다시 채워 주세요!');
+        minuteTick();
+      } else if (res && res.hadCommand && res.sysText){
+        toast(res.sysText);
+        var inp = byId('chalAmtInput');
+        if (inp) inp.value = '';
+        delete S.eventsCache[S.today];
+        setTimeout(renderLogList, 700);
+      } else if (res && res.ok === false){
+        toast(res.message || '기록하지 못했어요. 잠시 후 다시 시도해 주세요.');
+      } else {
+        toast('입력값을 확인하지 못했어요. 다시 확인해 주세요.');
+      }
+    }).catch(function(){
+      toast('기록 서버 응답이 늦어요. 잠시 후 다시 시도해 주세요.');
+    }).then(function(){
+      sending = false;
+      var b = byId('chalAddBtn');
+      if (b) b.disabled = false;
+    });
+  }
+  function joinChallenge(){
+    var nick = rawNick();
+    if (!nick){ toast('상단 닉네임을 먼저 입력해 주세요!'); return; }
+    var C = core();
+    if (!C || !window.FB){ toast('기록 모듈을 불러오지 못했어요.'); return; }
+    if (!challengeLive()){ toast('지금은 챌린지 진행 기간이 아니에요'); return; }
+    var base = C.normalizeName(C.displayBaseName(nick));
+    var key = C.slotKey(base);
+    if (!key){ toast('닉네임을 확인해 주세요!'); return; }
+    var FBH = window.FB;
+    Promise.resolve(FBH.set(FBH.ref(FBH.db, PARTS_PATH + '/' + key), {
+      name: base, joinedAt: Date.now()
+    })).then(function(){
+      toast(base + ' 님, 환영해요! 오늘도 화이팅 🌸');
+    }).catch(function(){
+      toast('참여에 실패했어요. 잠시 후 다시 시도해 주세요.');
+    });
+  }
+  var authBusy = false;
+  function unlockAdmin(){
+    if (authBusy) return;
+    var pwEl = byId('chalPwInput');
+    var pw = String((pwEl && pwEl.value) || '');
+    if (!pw){ toast('비밀번호를 입력해 주세요!'); return; }
+    if (!(window.crypto && window.crypto.subtle && window.crypto.subtle.digest)){
+      toast('이 브라우저에서는 관리자 인증을 쓸 수 없어요 🥲');
+      return;
+    }
+    if (!window.FB){ toast('연결 준비 중이에요. 잠시 후 다시 시도해 주세요.'); return; }
+    authBusy = true;
+    var btn = byId('chalUnlockBtn');
+    if (btn) btn.disabled = true;
+    var FBH = window.FB;
+    window.crypto.subtle.digest('SHA-256', new TextEncoder().encode(pw)).then(function(buf){
+      var hash = Array.prototype.map.call(new Uint8Array(buf), function(b){
+        return b.toString(16).padStart(2, '0');
+      }).join('');
+      return Promise.resolve(FBH.get(FBH.ref(FBH.db, ADMIN_HASH_PATH))).then(function(snap){
+        var stored = (snap && typeof snap.val === 'function') ? snap.val() : null;
+        if (!stored){
+          // 먼슬리 페이지와 동일한 write-once 최초 등록
+          return Promise.resolve(FBH.set(FBH.ref(FBH.db, ADMIN_HASH_PATH), hash)).then(function(){
+            S.adminUnlocked = true; S.adminFilled = false;
+            if (pwEl) pwEl.value = '';
+            toast('새 관리자 비밀번호를 등록했어요 🔑');
+          });
+        }
+        if (String(stored) === hash){
+          S.adminUnlocked = true; S.adminFilled = false;
+          if (pwEl) pwEl.value = '';
+          toast('관리자 인증 완료! 🔓');
+        } else {
+          toast('비밀번호가 맞지 않아요 🥲');
+        }
+      });
+    }).catch(function(){
+      toast('인증 확인에 실패했어요. 잠시 후 다시 시도해 주세요.');
+    }).then(function(){
+      authBusy = false;
+      var b = byId('chalUnlockBtn');
+      if (b) b.disabled = false;
+      renderAdmin();
+    });
+  }
+  function saveConfig(){
+    if (!window.FB){ toast('연결 준비 중이에요. 잠시 후 다시 시도해 주세요.'); return; }
+    var name = String(byId('chalSetName').value || '').trim().slice(0, 30) || '글자수 챌린지';
+    var goal = parseInt(byId('chalSetGoal').value, 10);
+    if (!isFinite(goal)) goal = 3000;
+    goal = Math.max(100, goal);
+    var days = parseInt(byId('chalSetDays').value, 10);
+    if (!isFinite(days)) days = 14;
+    days = Math.min(60, Math.max(1, days));
+    var start = String(byId('chalSetStart').value || '');
+    if (!isDayKey(start)){ toast('시작일을 선택해 주세요!'); return; }
+    var active = !!byId('chalSetActive').checked;
+    var FBH = window.FB;
+    Promise.resolve(FBH.set(FBH.ref(FBH.db, CONFIG_PATH), {
+      name: name, dailyGoal: goal, days: days, startDate: start, active: active, updatedAt: Date.now()
+    })).then(function(){
+      S.selDay = null;
+      lastStripSel = null;
+      toast('챌린지 설정을 저장했어요! 🎯');
+    }).catch(function(){
+      toast('설정 저장에 실패했어요. 잠시 후 다시 시도해 주세요.');
+    });
+  }
+  function kickParticipant(key){
+    if (!key || !window.FB) return;
+    var parts = S.parts || {};
+    var nm = String((parts[key] && parts[key].name) || key);
+    if (!window.confirm("'" + nm + "' 님을 챌린지에서 내보낼까요?\n(글자수 기록 데이터는 지워지지 않아요)")) return;
+    var FBH = window.FB;
+    Promise.resolve(FBH.remove(FBH.ref(FBH.db, PARTS_PATH + '/' + key))).then(function(){
+      toast(nm + ' 님을 내보냈어요');
+    }).catch(function(){
+      toast('내보내기에 실패했어요.');
+    });
+  }
+
+  /* ---------- 토스트 ---------- */
+  var toastTimer = null;
+  function toast(msg){
+    var t = byId('chalToast');
+    if (!t) return;
+    t.textContent = String(msg || '');
+    t.classList.add('show');
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(function(){ t.classList.remove('show'); }, 2200);
+  }
+
+  /* ---------- 팡파레 FX (프로토타입 이식) ---------- */
+  var FXC = { c: null, ctx: null, parts: [], raf: null };
+  var PALETTE = ['#ff6fae', '#ff8fc7', '#ffb37e', '#ffd76a', '#8fd8ff', '#c79bff', '#ffffff'];
+  function rnd(a, b){ return a + Math.random() * (b - a); }
+  function fxInit(){
+    if (FXC.c) return;
+    var c = byId('chalFxCanvas');
+    if (!c) return;
+    FXC.c = c;
+    FXC.ctx = c.getContext('2d');
+    var fit = function(){
+      try{
+        var dpr = window.devicePixelRatio || 1;
+        FXC.c.width = FXC.c.offsetWidth * dpr;
+        FXC.c.height = FXC.c.offsetHeight * dpr;
+        FXC.ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+      }catch(e){}
+    };
+    fit();
+    window.addEventListener('resize', fit);
+  }
+  function spawnBurst(x, y, n, power, colors){
+    for (var i = 0; i < n; i++){
+      var ang = rnd(0, Math.PI * 2), sp = rnd(power * .3, power);
+      FXC.parts.push({
+        type: Math.random() < .25 ? 'circle' : (Math.random() < .2 ? 'star' : 'rect'),
+        x: x, y: y, vx: Math.cos(ang) * sp, vy: Math.sin(ang) * sp - rnd(1, 3),
+        g: rnd(.10, .16), w: rnd(5, 10), h: rnd(8, 14), rot: rnd(0, Math.PI * 2), vr: rnd(-.25, .25),
+        life: rnd(70, 130), age: 0, color: (colors || PALETTE)[Math.floor(Math.random() * (colors || PALETTE).length)]
+      });
+    }
+    fxRun();
+  }
+  function spawnCannon(side, n, colors){
+    var W = FXC.c.offsetWidth, H = FXC.c.offsetHeight;
+    var x = side === 'l' ? 10 : W - 10, dir = side === 'l' ? 1 : -1;
+    for (var i = 0; i < n; i++){
+      var ang = -Math.PI / 2 + dir * rnd(.3, 1.0);
+      var sp = rnd(6, 11);
+      FXC.parts.push({
+        type: Math.random() < .3 ? 'star' : 'rect', x: x, y: H * .75,
+        vx: Math.cos(ang) * sp * 1.2, vy: Math.sin(ang) * sp, g: rnd(.11, .17), w: rnd(5, 9), h: rnd(8, 14),
+        rot: rnd(0, Math.PI * 2), vr: rnd(-.3, .3), life: rnd(80, 140), age: 0,
+        color: (colors || PALETTE)[Math.floor(Math.random() * (colors || PALETTE).length)]
+      });
+    }
+    fxRun();
+  }
+  function spawnRain(n, colors){
+    var W = FXC.c.offsetWidth;
+    for (var i = 0; i < n; i++){
+      FXC.parts.push({
+        type: Math.random() < .3 ? 'circle' : 'rect', x: rnd(0, W), y: rnd(-160, -10),
+        vx: rnd(-.8, .8), vy: rnd(1.5, 3.5), g: .035, w: rnd(5, 9), h: rnd(8, 13),
+        rot: rnd(0, Math.PI * 2), vr: rnd(-.15, .15), life: rnd(160, 240), age: 0,
+        color: (colors || PALETTE)[Math.floor(Math.random() * (colors || PALETTE).length)]
+      });
+    }
+    fxRun();
+  }
+  function spawnFirework(x, y, color){
+    FXC.parts.push({ type: 'rocket', x: x, y: FXC.c.offsetHeight + 10, tx: x, ty: y, vy: -rnd(7, 9), color: color, age: 0, life: 200 });
+    fxRun();
+  }
+  function explode(x, y, color){
+    var n = 46;
+    for (var i = 0; i < n; i++){
+      var ang = Math.PI * 2 * i / n + rnd(-.05, .05), sp = rnd(2.2, 4.6);
+      FXC.parts.push({ type: 'spark', x: x, y: y, vx: Math.cos(ang) * sp, vy: Math.sin(ang) * sp, g: .045, life: rnd(50, 80), age: 0, color: color });
+    }
+  }
+  function drawStar(ctx, x, y, r, rot, color){
+    ctx.save(); ctx.translate(x, y); ctx.rotate(rot); ctx.fillStyle = color; ctx.beginPath();
+    for (var i = 0; i < 10; i++){
+      var rr = i % 2 ? r * .45 : r;
+      var a = Math.PI * i / 5 - Math.PI / 2;
+      ctx.lineTo(Math.cos(a) * rr, Math.sin(a) * rr);
+    }
+    ctx.closePath(); ctx.fill(); ctx.restore();
+  }
+  function fxRun(){ if (!FXC.raf) FXC.raf = requestAnimationFrame(fxTick); }
+  function fxTick(){
+    var ctx = FXC.ctx, W = FXC.c.offsetWidth, H = FXC.c.offsetHeight;
+    ctx.clearRect(0, 0, W, H);
+    FXC.parts = FXC.parts.filter(function(p){
+      p.age++;
+      if (p.type === 'rocket'){
+        p.y += p.vy; p.vy += .05;
+        ctx.fillStyle = p.color; ctx.beginPath(); ctx.arc(p.x, p.y, 2.4, 0, 7); ctx.fill();
+        ctx.globalAlpha = .4; ctx.beginPath(); ctx.arc(p.x, p.y + 6, 1.6, 0, 7); ctx.fill(); ctx.globalAlpha = 1;
+        if (p.y <= p.ty || p.vy >= -1){ explode(p.x, p.y, p.color); return false; }
+        return true;
+      }
+      if (p.type === 'spark'){
+        p.x += p.vx; p.y += p.vy; p.vy += p.g; p.vx *= .985; p.vy *= .985;
+        var sa = Math.max(0, 1 - p.age / p.life);
+        ctx.globalAlpha = sa; ctx.fillStyle = p.color;
+        ctx.beginPath(); ctx.arc(p.x, p.y, 2.1, 0, 7); ctx.fill(); ctx.globalAlpha = 1;
+        return p.age < p.life;
+      }
+      p.x += p.vx; p.y += p.vy; p.vy += p.g; p.rot += p.vr; p.vx *= .992;
+      var a = Math.max(0, 1 - p.age / p.life);
+      ctx.globalAlpha = a;
+      if (p.type === 'circle'){ ctx.fillStyle = p.color; ctx.beginPath(); ctx.arc(p.x, p.y, p.w * .45, 0, 7); ctx.fill(); }
+      else if (p.type === 'star'){ drawStar(ctx, p.x, p.y, p.w * .8, p.rot, p.color); }
+      else {
+        ctx.save(); ctx.translate(p.x, p.y); ctx.rotate(p.rot); ctx.fillStyle = p.color;
+        ctx.fillRect(-p.w / 2, -p.h / 2, p.w, p.h * Math.abs(Math.sin(p.age * .08 + p.rot)));
+        ctx.restore();
+      }
+      ctx.globalAlpha = 1;
+      return p.age < p.life && p.y < H + 30;
+    });
+    if (FXC.parts.length){ FXC.raf = requestAnimationFrame(fxTick); }
+    else { FXC.raf = null; ctx.clearRect(0, 0, W, H); }
+  }
+  function showBanner(emoji, text, sub){
+    var b = byId('chalBanner');
+    if (!b) return;
+    b.querySelector('.chalBEmoji').textContent = emoji;
+    b.querySelector('.chalBText').textContent = text;
+    b.querySelector('.chalBSub').textContent = sub || '';
+    b.classList.remove('show');
+    void b.offsetWidth;
+    b.classList.add('show');
+  }
+  function showShimmer(){
+    var sh = byId('chalShimmer');
+    if (!sh) return;
+    sh.classList.remove('on');
+    void sh.offsetWidth;
+    sh.classList.add('on');
+  }
+  function celebrate(tier){
+    fxInit();
+    if (!FXC.c) return;
+    var W = function(){ return FXC.c.offsetWidth; };
+    var H = function(){ return FXC.c.offsetHeight; };
+    var GOLD = ['#ffd76a', '#ffc94d', '#ff9d3c', '#fff3c9', '#ff8fc7'];
+    if (tier === 1){
+      spawnBurst(W() / 2, H() * .34, 110, 7, PALETTE);
+      showBanner('🎉', '목표 달성!', '오늘의 글자수를 모두 채웠어요!');
+    } else if (tier === 2){
+      spawnCannon('l', 90); spawnCannon('r', 90);
+      setTimeout(function(){ spawnBurst(W() / 2, H() * .3, 70, 6, GOLD); }, 250);
+      showBanner('🔥', '150% 초과 달성!', '멈출 수 없는 손가락!');
+    } else if (tier === 3){
+      spawnFirework(W() * .3, H() * .28, '#ff6fae');
+      setTimeout(function(){ spawnFirework(W() * .7, H() * .24, '#ffd76a'); }, 350);
+      setTimeout(function(){ spawnFirework(W() * .5, H() * .34, '#8fd8ff'); }, 700);
+      spawnRain(90);
+      showShimmer();
+      showBanner('🌟', '200% 달성!', '오늘 폭주 기관차예요!');
+    } else if (tier >= 4){
+      ['#ff6fae', '#ffd76a', '#8fd8ff', '#c79bff', '#5ecf9a', '#ffb37e'].forEach(function(cl, i){
+        setTimeout(function(){ spawnFirework(rnd(W() * .2, W() * .8), rnd(H() * .16, H() * .38), cl); }, i * 260);
+      });
+      spawnCannon('l', 120, GOLD); spawnCannon('r', 120, GOLD);
+      spawnRain(160);
+      showShimmer();
+      showBanner('👑', '300%! 전설의 마감러!', '작업방의 전설이 탄생했어요!!');
+    }
+  }
+
+  /* ---------- 모달 열기/닫기 · 뷰 전환 ---------- */
+  function openModal(){
+    S.open = true;
+    ensureSelDay();
+    var ov = byId('chalOverlay');
+    ov.classList.add('on');
+    ov.setAttribute('aria-hidden', 'false');
+    renderAll();
+    refreshMyHistory().then(function(){
+      if (!S.open) return;
+      renderDayStrip();
+      if (S.view === 'today') renderGauge();
+      if (S.view === 'history') paintHistory();
+    });
+  }
+  function closeModal(){
+    S.open = false;
+    var ov = byId('chalOverlay');
+    ov.classList.remove('on');
+    ov.setAttribute('aria-hidden', 'true');
+  }
+  function setView(v){
+    S.view = v;
+    renderAll();
+  }
+  function selectDay(dk){
+    if (!isDayKey(dk) || dk > S.today) return;
+    S.selDay = dk;
+    if (S.view !== 'today') S.view = 'today';
+    renderAll();
+  }
+
+  /* ---------- 이벤트 바인딩 ---------- */
+  function bindUi(){
+    var btn = byId('btnChallenge');
+    if (btn) btn.addEventListener('click', openModal);
+    var close = byId('chalClose');
+    if (close) close.addEventListener('click', closeModal);
+    var ov = byId('chalOverlay');
+    if (ov) ov.addEventListener('click', function(e){ if (e.target === ov) closeModal(); });
+    document.addEventListener('keydown', function(e){
+      if (e.key === 'Escape' && S.open) closeModal();
+    });
+    Array.prototype.forEach.call(document.querySelectorAll('#chalOverlay .chalTab'), function(t){
+      t.addEventListener('click', function(){ setView(t.getAttribute('data-chalview') || 'today'); });
+    });
+    var strip = byId('chalDayStrip');
+    if (strip) strip.addEventListener('click', function(e){
+      var chip = e.target && e.target.closest ? e.target.closest('[data-chalday]') : null;
+      if (!chip || chip.classList.contains('locked')) return;
+      selectDay(chip.getAttribute('data-chalday'));
+    });
+    var grid = byId('chalHistGrid');
+    if (grid) grid.addEventListener('click', function(e){
+      var cell = e.target && e.target.closest ? e.target.closest('[data-chalday]') : null;
+      if (!cell || cell.classList.contains('locked')) return;
+      selectDay(cell.getAttribute('data-chalday'));
+    });
+    var chips = byId('chalQuickChips');
+    if (chips){
+      QUICK_AMOUNTS.forEach(function(v){
+        var b = document.createElement('button');
+        b.className = 'chalChip';
+        b.type = 'button';
+        b.textContent = '+' + fmtN(v);
+        b.addEventListener('click', function(){ submitDelta(v); });
+        chips.appendChild(b);
+      });
+    }
+    var addBtn = byId('chalAddBtn');
+    if (addBtn) addBtn.addEventListener('click', function(){
+      submitDelta(parseInt(byId('chalAmtInput').value, 10));
+    });
+    var amt = byId('chalAmtInput');
+    if (amt) amt.addEventListener('keydown', function(e){
+      if (e.key === 'Enter'){ e.preventDefault(); submitDelta(parseInt(amt.value, 10)); }
+    });
+    var joinBtn = byId('chalJoinBtn');
+    if (joinBtn) joinBtn.addEventListener('click', joinChallenge);
+    var unlockBtn = byId('chalUnlockBtn');
+    if (unlockBtn) unlockBtn.addEventListener('click', unlockAdmin);
+    var pw = byId('chalPwInput');
+    if (pw) pw.addEventListener('keydown', function(e){
+      if (e.key === 'Enter'){ e.preventDefault(); unlockAdmin(); }
+    });
+    var lockBtn = byId('chalLockBtn');
+    if (lockBtn) lockBtn.addEventListener('click', function(){
+      S.adminUnlocked = false;
+      S.adminFilled = false;
+      renderAdmin();
+      toast('관리자 잠금 🔒');
+    });
+    var saveBtn = byId('chalSaveBtn');
+    if (saveBtn) saveBtn.addEventListener('click', saveConfig);
+    var manage = byId('chalManageList');
+    if (manage) manage.addEventListener('click', function(e){
+      var del = e.target && e.target.closest ? e.target.closest('[data-chalkick]') : null;
+      if (del) kickParticipant(del.getAttribute('data-chalkick'));
+    });
+    var user = byId('user');
+    var nickTimer = null;
+    if (user) user.addEventListener('input', function(){
+      clearTimeout(nickTimer);
+      nickTimer = setTimeout(function(){ if (S.open) renderAll(); }, 400);
+    });
+  }
+
+  /* ---------- 시작: FB/엔진 준비를 기다렸다가 구독 시작 ---------- */
+  var bound = false;
+  var bootTriesLeft = 150; // 약 30초
+  function boot(){
+    if (!byId('btnChallenge') || !byId('chalOverlay')) return; // 마크업 없음(방어)
+    if (!bound){
+      bound = true;
+      bindUi();
+      fxInit();
+    }
+    if (!window.FB || !window.PomoRecordCore){
+      if (bootTriesLeft-- > 0) setTimeout(boot, 200);
+      return;
+    }
+    startCore();
+  }
+  function startCore(){
+    var ready;
+    try{
+      ready = (typeof fbEnsureReady_ === 'function') ? fbEnsureReady_() : window.FB.ensureAnonAuth();
+    }catch(e){
+      ready = Promise.reject(e);
+    }
+    Promise.resolve(ready).then(function(){
+      var FBH = window.FB;
+      FBH.onValue(FBH.ref(FBH.db, CONFIG_PATH), function(snap){
+        S.cfg = (snap && typeof snap.val === 'function') ? snap.val() : null;
+        ensureStateSub();
+        if (!challengeLive()) stopTicker();
+        ensureSelDay();
+        renderAll();
+      }, function(){});
+      FBH.onValue(FBH.ref(FBH.db, PARTS_PATH), function(snap){
+        S.parts = (snap && typeof snap.val === 'function') ? (snap.val() || {}) : {};
+        renderAll();
+      }, function(){});
+      setInterval(minuteTick, 60000);
+    }).catch(function(){
+      setTimeout(startCore, 3000);
+    });
+  }
+  if (document.readyState === 'loading'){
+    document.addEventListener('DOMContentLoaded', boot);
+  } else {
+    boot();
+  }
 })();
 </script>
 
